@@ -5,6 +5,7 @@ import {
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -63,7 +64,8 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const { ownerId } = await getProviderConnectionAccess();
+    const connection = await getProviderConnectionById(id, ownerId);
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -78,6 +80,9 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ connection: result });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error fetching connection:", error);
     return NextResponse.json({ error: "Failed to fetch connection" }, { status: 500 });
   }
@@ -87,6 +92,7 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const { ownerId } = await getProviderConnectionAccess();
     const body = await request.json();
     const {
       name,
@@ -101,7 +107,7 @@ export async function PUT(request, { params }) {
       providerSpecificData
     } = body;
 
-    const existing = await getProviderConnectionById(id);
+    const existing = await getProviderConnectionById(id, ownerId);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
@@ -166,6 +172,9 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ connection: result });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error updating connection:", error);
     return NextResponse.json({ error: "Failed to update connection" }, { status: 500 });
   }
@@ -175,6 +184,12 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const { ownerId } = await getProviderConnectionAccess();
+
+    const existing = await getProviderConnectionById(id, ownerId);
+    if (!existing) {
+      return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
 
     const deleted = await deleteProviderConnection(id);
     if (!deleted) {
@@ -183,6 +198,9 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ message: "Connection deleted successfully" });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error deleting connection:", error);
     return NextResponse.json({ error: "Failed to delete connection" }, { status: 500 });
   }

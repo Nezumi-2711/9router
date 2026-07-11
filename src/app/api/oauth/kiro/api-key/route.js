@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/kiro/api-key
@@ -10,6 +11,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { apiKey, region } = await request.json();
 
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
@@ -35,6 +37,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "kiro",
       authType: "api_key",
+      ownerId: user.id,
       accessToken: credential.accessToken,
       refreshToken: null,
       expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
@@ -57,7 +60,13 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Kiro API key import error:", error);
+    if (error.status === 409) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     // Do not reflect upstream response body to the client (SSRF hardening)
     return NextResponse.json(
       { error: "API key validation failed" },

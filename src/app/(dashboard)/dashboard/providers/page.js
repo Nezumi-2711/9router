@@ -22,6 +22,7 @@ import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import useUserStore from "@/store/userStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 
@@ -105,6 +106,7 @@ export default function ProvidersPage() {
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const notify = useNotificationStore();
+  const user = useUserStore((state) => state.user);
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
   const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
@@ -281,12 +283,18 @@ export default function ProvidersPage() {
     "oauth",
   );
   const freeEntries = Object.entries(FREE_PROVIDERS)
-    .filter(([, info]) => !info.hidden && matchSearch(info.name))
+    .filter(
+      ([, info]) =>
+        !info.hidden &&
+        (user?.role === "admin" || !info.noAuth) &&
+        matchSearch(info.name),
+    )
     .sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
   const freeTierEntries = sortByPriority(
     Object.entries(FREE_TIER_PROVIDERS).filter(
       ([, info]) =>
         !info.hidden &&
+        (user?.role === "admin" || !info.noAuth) &&
         matchSearch(info.name) &&
         (info.serviceKinds ?? ["llm"]).includes("llm"),
     ),

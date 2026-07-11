@@ -113,6 +113,86 @@ describe("DB SQLite layer — public API parity", () => {
     expect(back.providerSpecificData).toEqual({ foo: "bar" });
   });
 
+  it("providerConnections: scopes retrieval and lookup to connection owner", async () => {
+    const ownerOne = await sqliteDb.createUser({ username: "connection-owner-one", password: "password", role: "user" });
+    const ownerTwo = await sqliteDb.createUser({ username: "connection-owner-two", password: "password", role: "user" });
+    const firstConnection = await sqliteDb.createProviderConnection({
+      provider: "owner-test-one",
+      authType: "apikey",
+      name: "owner-one-connection",
+      apiKey: "key-one",
+      ownerId: ownerOne.id,
+    });
+    const secondConnection = await sqliteDb.createProviderConnection({
+      provider: "owner-test-two",
+      authType: "apikey",
+      name: "owner-two-connection",
+      apiKey: "key-two",
+      ownerId: ownerTwo.id,
+    });
+    const account = await sqliteDb.createProviderConnection({
+      provider: "owner-test-account",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "token-one",
+      ownerId: ownerOne.id,
+    });
+
+    const ownerOneConnections = await sqliteDb.getProviderConnections({ ownerId: ownerOne.id });
+    expect(ownerOneConnections.map((connection) => connection.id)).toContain(firstConnection.id);
+    expect(ownerOneConnections.map((connection) => connection.id)).not.toContain(secondConnection.id);
+    await expect(sqliteDb.createProviderConnection({
+      provider: "owner-test-account",
+      authType: "oauth",
+      email: "shared@example.com",
+      accessToken: "token-two",
+      ownerId: ownerTwo.id,
+    })).rejects.toMatchObject({
+      code: "PROVIDER_ACCOUNT_EXISTS",
+      status: 409,
+    });
+    expect(account.ownerId).toBe(ownerOne.id);
+
+    await sqliteDb.createProviderConnection({
+      provider: "owner-test-token",
+      authType: "access_token",
+      accessToken: "shared-token",
+      ownerId: ownerOne.id,
+    });
+    await expect(sqliteDb.createProviderConnection({
+      provider: "owner-test-token",
+      authType: "access_token",
+      accessToken: "shared-token",
+      ownerId: ownerTwo.id,
+    })).rejects.toMatchObject({
+      code: "PROVIDER_ACCOUNT_EXISTS",
+      status: 409,
+    });
+
+    await sqliteDb.createProviderConnection({
+      provider: "owner-test-api-key",
+      authType: "apikey",
+      name: "first-key-name",
+      apiKey: "shared-api-key",
+      ownerId: ownerOne.id,
+    });
+    await expect(sqliteDb.createProviderConnection({
+      provider: "owner-test-api-key",
+      authType: "apikey",
+      name: "different-key-name",
+      apiKey: "shared-api-key",
+      ownerId: ownerTwo.id,
+    })).rejects.toMatchObject({
+      code: "PROVIDER_ACCOUNT_EXISTS",
+      status: 409,
+    });
+    expect(await sqliteDb.getProviderConnectionById(firstConnection.id, ownerTwo.id)).toBeNull();
+    expect(await sqliteDb.getProviderConnectionById(firstConnection.id, ownerOne.id)).toMatchObject({
+      id: firstConnection.id,
+      ownerId: ownerOne.id,
+    });
+  });
+
   it("providerConnections: GitHub OAuth uses account identity as fallback name", async () => {
     const c = await sqliteDb.createProviderConnection({
       provider: "github",

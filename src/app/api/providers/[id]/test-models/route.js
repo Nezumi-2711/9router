@@ -4,6 +4,7 @@ import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/provide
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { pingModelByKind } from "@/app/api/models/test/ping";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/providers/[id]/test-models
@@ -13,7 +14,8 @@ import { pingModelByKind } from "@/app/api/models/test/ping";
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const { ownerId } = await getProviderConnectionAccess();
+    const connection = await getProviderConnectionById(id, ownerId);
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
@@ -60,6 +62,9 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({ provider: providerId, connectionId: id, results });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error testing models:", error);
     return NextResponse.json({ error: "Test failed" }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { requireCurrentDashboardUser } from "@/lib/auth/currentUser";
 
 /**
  * POST /api/oauth/codex/bulk-import
@@ -17,6 +18,16 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  * Tokens are NEVER echoed back in the response.
  */
 export async function POST(request) {
+  let user;
+  try {
+    user = await requireCurrentDashboardUser();
+  } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Failed to authenticate user" }, { status: 500 });
+  }
+
   let body;
   try {
     body = await request.json();
@@ -64,6 +75,7 @@ export async function POST(request) {
         id: _id,
         provider: _provider,
         authType: _authType,
+        ownerId: _ownerId,
         createdAt: _createdAt,
         updatedAt: _updatedAt,
         ...item
@@ -106,13 +118,14 @@ export async function POST(request) {
       const created = await createProviderConnection({
         provider: "codex",
         authType: "oauth",
+        ownerId: user.id,
         ...item,
       });
 
       results.push({ index: i, ok: true, id: created.id });
       success++;
     } catch (e) {
-      results.push({ index: i, ok: false, error: e.message || "Unknown error" });
+      results.push({ index: i, ok: false, error: e.message || "Unknown error", status: e.status || null });
       failed++;
     }
   }

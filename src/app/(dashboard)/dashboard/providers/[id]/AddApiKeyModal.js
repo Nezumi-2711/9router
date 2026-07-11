@@ -47,7 +47,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
-  const [bulkResult, setBulkResult] = useState(null); // { success, failed }
+  const [bulkResult, setBulkResult] = useState(null); // { success, failed, duplicateLines }
 
   const buildProviderSpecificData = () => {
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
@@ -137,6 +137,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setBulkResult(null);
     let success = 0;
     let failed = 0;
+    const duplicateLines = [];
     for (let i = 0; i < lines.length; i++) {
       const parts = lines[i].split("|");
       const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
@@ -165,14 +166,20 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             ...(providerSpecificData ? { providerSpecificData } : {}),
           }),
         });
-        if (res.ok) success++;
-        else failed++;
+        if (res.ok) {
+          success++;
+        } else {
+          failed++;
+          const data = await res.json().catch(() => null);
+          if (res.status === 409) duplicateLines.push(i + 1);
+          if (data?.error) console.log(`Bulk API key add failed on line ${i + 1}:`, data.error);
+        }
       } catch {
         failed++;
       }
     }
     setSaving(false);
-    setBulkResult({ success, failed });
+    setBulkResult({ success, failed, duplicateLines });
     if (success > 0 && onBulkDone) onBulkDone();
   };
 
@@ -203,7 +210,14 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             />
             {bulkResult && (
               <div className={`text-sm font-medium ${bulkResult.failed > 0 ? "text-yellow-400" : "text-green-400"}`}>
-                ✓ {bulkResult.success} added{bulkResult.failed > 0 ? `, ✗ ${bulkResult.failed} failed` : ""}
+                <p>
+                  ✓ {bulkResult.success} added{bulkResult.failed > 0 ? `, ✗ ${bulkResult.failed} failed` : ""}
+                </p>
+                {bulkResult.duplicateLines.length > 0 && (
+                  <p className="mt-1 text-red-500">
+                    Account/API key already exists in the system (line{bulkResult.duplicateLines.length > 1 ? "s" : ""} {bulkResult.duplicateLines.join(", ")}).
+                  </p>
+                )}
               </div>
             )}
             <div className="flex gap-2">

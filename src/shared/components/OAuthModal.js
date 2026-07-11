@@ -130,6 +130,10 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           return;
         }
 
+        if (!res.ok) {
+          throw new Error(data.error || "OAuth connection failed");
+        }
+
         if (data.error === "expired_token" || data.error === "access_denied") {
           throw new Error(data.errorDescription || data.error);
         }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
 
@@ -9,6 +10,7 @@ const GITLAB_DEFAULT_BASE = "https://gitlab.com";
  */
 export async function POST(request) {
   try {
+    const { user: dashboardUser } = await getProviderConnectionAccess();
     let body;
     try {
       body = await request.json();
@@ -39,6 +41,7 @@ export async function POST(request) {
     await createProviderConnection({
       provider: "gitlab",
       authType: "oauth",
+      ownerId: dashboardUser.id,
       accessToken: token.trim(),
       refreshToken: null,
       expiresAt: null,
@@ -56,7 +59,10 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.error("GitLab PAT auth error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }

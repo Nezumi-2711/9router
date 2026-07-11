@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
 import { backfillCodexEmails } from "@/lib/oauth/providers";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 const SAFE_FIELDS = [
   "id", "provider", "authType", "name", "email", "displayName",
@@ -76,6 +77,7 @@ function sortConnections(connections, sort) {
 
 export async function GET(request) {
   try {
+    const { ownerId } = await getProviderConnectionAccess();
     await backfillCodexEmails();
 
     const { searchParams } = new URL(request.url);
@@ -85,7 +87,7 @@ export async function GET(request) {
     const page = parsePositiveInt(searchParams.get("page"), 1);
     const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
 
-    const allConnections = await getProviderConnections();
+    const allConnections = await getProviderConnections(ownerId ? { ownerId } : {});
     const eligibleConnections = allConnections.filter(isUsageEligible);
     const providerOptions = Array.from(new Set(eligibleConnections.map((conn) => conn.provider))).sort();
 
@@ -121,6 +123,9 @@ export async function GET(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error fetching providers for client:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
   }

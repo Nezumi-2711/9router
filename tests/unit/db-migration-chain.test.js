@@ -37,6 +37,8 @@ describe("Schema migrations", () => {
       "_meta", "settings", "providerConnections", "providerNodes",
       "proxyPools", "apiKeys", "combos", "kv", "usageHistory", "usageDaily", "requestDetails",
     ]));
+    expect(db.all(`PRAGMA table_info(providerConnections)`).map((column) => column.name)).toContain("ownerId");
+    expect(db.all(`PRAGMA index_list(providerConnections)`).map((index) => index.name)).toContain("idx_pc_owner");
   });
 
   it("existing DB at older schemaVersion → re-applies pending migrations on restart", async () => {

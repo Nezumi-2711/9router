@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
@@ -393,7 +394,8 @@ const PROVIDER_MODELS_CONFIG = {
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const { ownerId } = await getProviderConnectionAccess();
+    const connection = await getProviderConnectionById(id, ownerId);
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -546,6 +548,9 @@ export async function GET(request, { params }) {
       models
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error fetching provider models:", error);
     return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });
   }

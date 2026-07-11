@@ -20,6 +20,7 @@ function rowToConn(row) {
     authType: row.authType,
     name: row.name,
     email: row.email,
+    ownerId: row.ownerId,
     priority: row.priority,
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt,
@@ -28,13 +29,14 @@ function rowToConn(row) {
 }
 
 function connToRow(c) {
-  const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+  const { id, provider, authType, name, email, ownerId, priority, isActive, createdAt, updatedAt, ...rest } = c;
   return {
     id,
     provider,
     authType,
     name: name ?? null,
     email: email ?? null,
+    ownerId: ownerId ?? null,
     priority: priority ?? null,
     isActive: isActive === false ? 0 : 1,
     data: stringifyJson(rest),
@@ -46,13 +48,13 @@ function connToRow(c) {
 function upsert(db, c) {
   const r = connToRow(c);
   db.run(
-    `INSERT INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO providerConnections(id, provider, authType, name, email, ownerId, priority, isActive, data, createdAt, updatedAt)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        provider=excluded.provider, authType=excluded.authType, name=excluded.name,
-       email=excluded.email, priority=excluded.priority, isActive=excluded.isActive,
+       email=excluded.email, ownerId=excluded.ownerId, priority=excluded.priority, isActive=excluded.isActive,
        data=excluded.data, updatedAt=excluded.updatedAt`,
-    [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
+    [r.id, r.provider, r.authType, r.name, r.email, r.ownerId, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
   );
 }
 
@@ -67,11 +69,54 @@ function deriveConnectionName(data, fallbackName) {
   return fallbackName;
 }
 
+function findDuplicateAccount(connections, data) {
+  const incomingCredential = data.accessToken || data.apiKey || data.refreshToken;
+  if (incomingCredential) {
+    const credentialMatch = connections.find((connection) => (
+      connection.accessToken === incomingCredential ||
+      connection.apiKey === incomingCredential ||
+      connection.refreshToken === incomingCredential
+    ));
+    if (credentialMatch) return credentialMatch;
+  }
+
+  if (!data.email) return null;
+
+  const incomingUsername = data.providerSpecificData?.username;
+  const incomingWorkspace = data.providerSpecificData?.chatgptAccountId;
+
+  return connections.find((connection) => {
+    if (connection.email !== data.email) return false;
+
+    const existingWorkspace = connection.providerSpecificData?.chatgptAccountId;
+    if (incomingWorkspace && existingWorkspace) {
+      return incomingWorkspace === existingWorkspace;
+    }
+    if (incomingWorkspace || existingWorkspace) return false;
+
+    const existingUsername = connection.providerSpecificData?.username;
+    if (incomingUsername && existingUsername) {
+      return incomingUsername === existingUsername;
+    }
+    if (incomingUsername || existingUsername) return false;
+
+    return true;
+  });
+}
+
+function duplicateAccountError() {
+  const error = new Error("Account already exists in the system");
+  error.code = "PROVIDER_ACCOUNT_EXISTS";
+  error.status = 409;
+  return error;
+}
+
 export async function getProviderConnections(filter = {}) {
   const db = await getAdapter();
   const where = [];
   const params = [];
   if (filter.provider) { where.push("provider = ?"); params.push(filter.provider); }
+  if (filter.ownerId) { where.push("ownerId = ?"); params.push(filter.ownerId); }
   if (filter.isActive !== undefined) { where.push("isActive = ?"); params.push(filter.isActive ? 1 : 0); }
   const sql = `SELECT * FROM providerConnections${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   const rows = db.all(sql, params);
@@ -80,9 +125,15 @@ export async function getProviderConnections(filter = {}) {
   return list;
 }
 
-export async function getProviderConnectionById(id) {
+export async function getProviderConnectionById(id, ownerId = null) {
   const db = await getAdapter();
-  const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+  const where = ["id = ?"];
+  const params = [id];
+  if (ownerId) {
+    where.push("ownerId = ?");
+    params.push(ownerId);
+  }
+  const row = db.get(`SELECT * FROM providerConnections WHERE ${where.join(" AND ")}`, params);
   return rowToConn(row);
 }
 
@@ -105,52 +156,17 @@ export async function createProviderConnection(data) {
   let result;
 
   db.transaction(() => {
-    const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
+    const allProviderConnections = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
+    const all = data.ownerId
+      ? allProviderConnections.filter((connection) => connection.ownerId === data.ownerId)
+      : allProviderConnections;
 
-    let existing = null;
-    if (data.authType === "oauth" && data.email) {
-      const incomingUsername = data.providerSpecificData?.username;
-      const incomingWs = data.providerSpecificData?.chatgptAccountId;
-      existing = all.find(c => {
-        if (c.authType !== "oauth" || c.email !== data.email) return false;
-
-        // Codex/OpenAI can issue multiple OAuth grants for the same email.
-        // Refresh tokens are rotated single-use; collapsing a new login onto an
-        // existing bare-email row overwrites the first account's token pair and
-        // makes it look "invalid" after adding a second account. Only update an
-        // existing Codex row when both rows expose the same ChatGPT account ID.
-        if (data.provider === "codex") {
-          const existingWs = c.providerSpecificData?.chatgptAccountId;
-          return !!incomingWs && !!existingWs && incomingWs === existingWs;
-        }
-
-        // Workspace providers use workspace ID when both sides have it
-        const existingWs = c.providerSpecificData?.chatgptAccountId;
-        if (incomingWs && existingWs) return incomingWs === existingWs;
-        if (incomingWs && !existingWs) return false;
-        if (!incomingWs && existingWs) return false;
-        // Non-workspace providers: match on (email + username) so cross-IdP
-        // accounts don't overwrite each other. Require username on both sides
-        // — if only one side has it, treat as a distinct identity rather than
-        // collapsing onto the bare-email fallback (which would re-introduce
-        // the cross-IdP overwrite).
-        const existingUsername = c.providerSpecificData?.username;
-        if (incomingUsername && existingUsername) {
-          return incomingUsername === existingUsername;
-        }
-        if (incomingUsername || existingUsername) return false;
-        return true;
-      });
-    } else if (data.authType === "apikey" && data.name) {
-      existing = all.find(c => c.authType === "apikey" && c.name === data.name);
-    }
-    // access_token: never dedup — user manages duplicates manually
-
-    if (existing) {
-      const merged = { ...existing, ...data, updatedAt: now };
-      upsert(db, merged);
-      result = merged;
-      return;
+    // Account identities are global: two dashboard users must not register the
+    // same provider account. API-key connections without an account identity
+    // or matching credential remain private and may use the same display name.
+    const existingAccount = findDuplicateAccount(allProviderConnections, data);
+    if (existingAccount) {
+      throw duplicateAccountError();
     }
 
     let connectionName = data.name || null;
@@ -167,6 +183,7 @@ export async function createProviderConnection(data) {
       provider: data.provider,
       authType: data.authType || "oauth",
       name: connectionName,
+      ownerId: data.ownerId || null,
       priority: connectionPriority,
       isActive: data.isActive !== undefined ? data.isActive : true,
       createdAt: now,

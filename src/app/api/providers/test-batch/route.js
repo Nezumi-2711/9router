@@ -8,6 +8,7 @@ import {
   ANTHROPIC_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
 import { testSingleConnection } from "../[id]/test/testUtils.js";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available
@@ -42,6 +43,7 @@ function isCompatibleProvider(providerId) {
 // POST /api/providers/test-batch - Test multiple connections by group
 export async function POST(request) {
   try {
+    const { ownerId } = await getProviderConnectionAccess();
     const body = await request.json();
     const { mode, providerId } = body;
 
@@ -49,7 +51,10 @@ export async function POST(request) {
       return NextResponse.json({ error: "mode is required" }, { status: 400 });
     }
 
-    const allConnections = await getProviderConnections({ isActive: true });
+    const allConnections = await getProviderConnections({
+      isActive: true,
+      ...(ownerId ? { ownerId } : {}),
+    });
 
     let connectionsToTest = [];
     if (mode === "provider" && providerId) {
@@ -125,6 +130,9 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error in batch test:", error);
     return NextResponse.json({ error: "Batch test failed" }, { status: 500 });
   }

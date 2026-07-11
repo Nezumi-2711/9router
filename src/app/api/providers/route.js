@@ -9,6 +9,7 @@ import {
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,8 @@ async function normalizeProxyPoolId(proxyPoolId) {
 // GET /api/providers - List all connections
 export async function GET() {
   try {
-    const connections = await getProviderConnections();
+    const { ownerId } = await getProviderConnectionAccess();
+    const connections = await getProviderConnections(ownerId ? { ownerId } : {});
 
     // Build nodeNameMap for compatible providers (id → name)
     let nodeNameMap = {};
@@ -78,6 +80,9 @@ export async function GET() {
 
     return NextResponse.json({ connections: safeConnections });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
   }
@@ -86,6 +91,7 @@ export async function GET() {
 // POST /api/providers - Create new connection (API Key only, OAuth via separate flow)
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
@@ -175,6 +181,7 @@ export async function POST(request) {
     const newConnection = await createProviderConnection({
       provider,
       authType: isWebCookieProvider ? "cookie" : "apikey",
+      ownerId: user.id,
       name: connectionName,
       apiKey: apiKey || "",
       priority: priority || 1,
@@ -191,7 +198,13 @@ export async function POST(request) {
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error creating provider:", error);
-    return NextResponse.json({ error: "Failed to create provider" }, { status: 500 });
+    return NextResponse.json(
+      { error: error.status === 409 ? error.message : "Failed to create provider" },
+      { status: error.status || 500 },
+    );
   }
 }

@@ -7,6 +7,7 @@ import {
   pollForToken 
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -20,7 +21,7 @@ import {
   clearXaiSession,
 } from "@/lib/oauth/utils/server";
 
-async function completeXaiManualCode(code, state) {
+async function completeXaiManualCode(code, state, ownerId) {
   const session = state ? getXaiSessionStatus(state) : null;
   if (!session) {
     throw new Error("xAI OAuth session not found; restart the login flow and paste the code again");
@@ -38,6 +39,7 @@ async function completeXaiManualCode(code, state) {
     const connection = await createProviderConnection({
       provider: "xai",
       authType: "oauth",
+      ownerId,
       ...tokenData,
       expiresAt: tokenData.expiresIn
         ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
@@ -68,6 +70,7 @@ async function completeXaiManualCode(code, state) {
 // GET /api/oauth/[provider]/device-code - Request device code (for device_code flow)
 export async function GET(request, { params }) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { provider, action } = await params;
     const { searchParams } = new URL(request.url);
 
@@ -98,8 +101,8 @@ export async function GET(request, { params }) {
       let serverSide = false;
       if (result.success && state && codeVerifier && redirectUri) {
         serverSide = provider === "xai"
-          ? registerXaiSession({ state, codeVerifier, redirectUri })
-          : registerCodexSession({ state, codeVerifier, redirectUri });
+          ? registerXaiSession({ state, codeVerifier, redirectUri, ownerId: user.id })
+          : registerCodexSession({ state, codeVerifier, redirectUri, ownerId: user.id });
       }
       return NextResponse.json({ ...result, serverSide });
     }
@@ -178,6 +181,9 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("OAuth GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -187,6 +193,7 @@ export async function GET(request, { params }) {
 // POST /api/oauth/[provider]/poll - Poll for token (device_code flow)
 export async function POST(request, { params }) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { provider, action } = await params;
     let body;
     try {
@@ -223,6 +230,7 @@ export async function POST(request, { params }) {
         const connection = await createProviderConnection({
           provider,
           authType: "access_token",
+          ownerId: user.id,
           accessToken: code,
           email: email || null,
           providerSpecificData,
@@ -253,6 +261,7 @@ export async function POST(request, { params }) {
       const connection = await createProviderConnection({
         provider,
         authType: "oauth",
+        ownerId: user.id,
         ...tokenData,
         expiresAt: tokenData.expiresIn 
           ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() 
@@ -307,6 +316,7 @@ export async function POST(request, { params }) {
         const connection = await createProviderConnection({
           provider,
           authType: "oauth",
+          ownerId: user.id,
           ...result.tokens,
           expiresAt: result.tokens.expiresIn 
             ? new Date(Date.now() + result.tokens.expiresIn * 1000).toISOString() 
@@ -339,13 +349,20 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Manual code only supported for xai" }, { status: 400 });
       }
       const { code, state } = body;
-      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim());
+      const connection = await completeXaiManualCode(
+        String(code || "").trim(),
+        String(state || "").trim(),
+        user.id,
+      );
       return NextResponse.json({ success: true, connection });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("OAuth POST error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }

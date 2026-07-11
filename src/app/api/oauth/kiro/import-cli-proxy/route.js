@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/kiro/import-cli-proxy
@@ -8,6 +9,7 @@ import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const body = await request.json();
     const rawAuth = body?.cliProxyAuth ?? body?.auth ?? body?.json ?? body;
     const tokenData = normalizeKiroExternalIdpAuth(rawAuth);
@@ -15,6 +17,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "kiro",
       authType: "oauth",
+      ownerId: user.id,
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken,
       expiresAt: tokenData.expiresAt,
@@ -32,9 +35,12 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json(
       { error: error?.message || "CLIProxyAPI import failed" },
-      { status: 400 }
+      { status: error?.status || 400 }
     );
   }
 }

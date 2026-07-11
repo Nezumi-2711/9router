@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/kiro/import
@@ -10,6 +11,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();
 
     if (!refreshToken || typeof refreshToken !== "string") {
@@ -38,6 +40,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "kiro",
       authType: "oauth",
+      ownerId: user.id,
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken || refreshToken.trim(),
       expiresAt: new Date(Date.now() + (tokenData.expiresIn || 3600) * 1000).toISOString(),
@@ -60,7 +63,10 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Kiro import token error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }

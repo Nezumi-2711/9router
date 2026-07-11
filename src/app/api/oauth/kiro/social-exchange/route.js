@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/kiro/social-exchange
@@ -9,6 +10,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { code, codeVerifier, provider } = await request.json();
 
     if (!code || !codeVerifier) {
@@ -40,6 +42,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "kiro",
       authType: "oauth",
+      ownerId: user.id,
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken,
       expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
@@ -61,7 +64,10 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Kiro social exchange error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }

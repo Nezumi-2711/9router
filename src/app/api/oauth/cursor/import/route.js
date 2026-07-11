@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/cursor/import
@@ -12,6 +13,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { accessToken, machineId } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
@@ -43,6 +45,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "cursor",
       authType: "oauth",
+      ownerId: user.id,
       accessToken: tokenData.accessToken,
       refreshToken: null, // Cursor doesn't have public refresh endpoint
       expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
@@ -65,8 +68,11 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Cursor import token error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }
 

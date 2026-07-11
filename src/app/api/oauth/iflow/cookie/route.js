@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * iFlow Cookie-Based Authentication
@@ -8,6 +9,7 @@ import { createProviderConnection } from "@/models";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { cookie } = await request.json();
 
     if (!cookie || typeof cookie !== "string") {
@@ -109,6 +111,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "iflow",
       authType: "cookie",
+      ownerId: user.id,
       name: refreshedKey.name || keyData.name,
       email: refreshedKey.name || keyData.name,
       apiKey: refreshedKey.apiKey,
@@ -131,7 +134,10 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.error("iFlow cookie auth error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }

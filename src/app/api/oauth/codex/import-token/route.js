@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
+import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/codex/import-token
@@ -11,6 +12,7 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  */
 export async function POST(request) {
   try {
+    const { user } = await getProviderConnectionAccess();
     const { accessToken, name } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {
@@ -71,6 +73,7 @@ export async function POST(request) {
     const connection = await createProviderConnection({
       provider: "codex",
       authType: "access_token",
+      ownerId: user.id,
       accessToken: token,
       name: connectionName,
       email: email,
@@ -90,7 +93,10 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Codex access token import error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || 500 });
   }
 }
