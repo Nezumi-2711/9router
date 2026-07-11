@@ -46,7 +46,7 @@ const ALWAYS_PROTECTED = [
 
 // User administration is never exposed to normal users, even if dashboard login
 // is disabled for local single-user deployments.
-const ADMIN_ONLY_PATHS = ["/api/users"];
+const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [

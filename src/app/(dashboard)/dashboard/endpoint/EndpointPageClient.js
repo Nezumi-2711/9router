@@ -17,7 +17,7 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
-export default function APIPageClient({ machineId }) {
+export default function APIPageClient({ machineId, isAdmin }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -99,7 +99,7 @@ export default function APIPageClient({ machineId }) {
 
   useEffect(() => {
     fetchData();
-    loadSettings();
+    if (isAdmin) loadSettings();
   }, []);
 
   // Status poll: only while degraded (not yet reachable). Stop once healthy to avoid spam.
@@ -704,11 +704,16 @@ export default function APIPageClient({ machineId }) {
   return (
     <div className="flex flex-col gap-8">
       {/* Endpoint Card */}
-      <Card>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">api</span>
-          API Endpoint
-        </h2>
+      <Card className="overflow-hidden">
+        <div className="mb-5 flex items-center gap-3 border-b border-border-subtle pb-4">
+          <div className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary">
+            <span className="material-symbols-outlined text-[20px]">api</span>
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold leading-tight">API Endpoint</h2>
+            <p className="mt-1 text-xs text-text-muted">Use this address to connect compatible clients.</p>
+          </div>
+        </div>
 
         {/* Endpoint rows */}
         <div className="flex flex-col gap-2">
@@ -720,9 +725,11 @@ export default function APIPageClient({ machineId }) {
             copied={copied}
             onCopy={copy}
           />
+          {/* Cloudflare Tunnel and Tailscale are administrator-managed endpoints. */}
+          {isAdmin && <>
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-22 text-center ${
               tunnelEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tunnel</span>
             {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
@@ -814,7 +821,7 @@ export default function APIPageClient({ machineId }) {
           </div>
           {/* Tailscale */}
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-22 text-center ${
               tsEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
             }`}>Tailscale</span>
             {tsEnabled && !tsLoading && tsReachable ? (
@@ -896,10 +903,11 @@ export default function APIPageClient({ machineId }) {
               </Button>
             )}
           </div>
+          </>}
         </div>
 
         {/* Pre-enable security gate banner */}
-        {isLoginUnsafe && !tunnelEnabled && !tsEnabled && (
+        {isAdmin && isLoginUnsafe && !tunnelEnabled && !tsEnabled && (
           <div className="mt-4">
             <SecurityWarning
               message={unsafeReason}
@@ -909,7 +917,7 @@ export default function APIPageClient({ machineId }) {
         )}
 
         {/* Security warnings when tunnel or tailscale is active */}
-        {(tunnelEnabled || tsEnabled) && (
+        {isAdmin && (tunnelEnabled || tsEnabled) && (
           <div className="mt-4 flex flex-col gap-2">
             {!requireApiKey && (
               <SecurityWarning
@@ -934,7 +942,7 @@ export default function APIPageClient({ machineId }) {
         )}
 
         {/* Tunnel dashboard access option */}
-        {(tunnelEnabled || tsEnabled) && (
+        {isAdmin && (tunnelEnabled || tsEnabled) && (
           <div className="mt-4 pt-4 border-t border-border flex items-center gap-3">
             <Toggle
               checked={tunnelDashboardAccess}
@@ -949,18 +957,23 @@ export default function APIPageClient({ machineId }) {
       </Card>
 
       {/* API Keys */}
-      <Card id="require-api-key">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">vpn_key</span>
-            API Keys
-          </h2>
+      <Card id="require-api-key" className="overflow-hidden">
+        <div className="mb-5 flex items-center justify-between gap-4 border-b border-border-subtle pb-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <span className="material-symbols-outlined text-[20px]">vpn_key</span>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold leading-tight">API Keys</h2>
+              <p className="mt-1 text-xs text-text-muted">Manage keys created from this account.</p>
+            </div>
+          </div>
           <Button icon="add" onClick={() => setShowAddModal(true)}>
             Create Key
           </Button>
         </div>
 
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
+        {isAdmin && <div className="mb-4 flex items-center justify-between rounded-xl border border-border-subtle bg-surface-2/40 px-4 py-3">
           <div>
             <p className="font-medium">Require API key</p>
             <p className="text-sm text-text-muted">
@@ -971,9 +984,9 @@ export default function APIPageClient({ machineId }) {
             checked={requireApiKey}
             onChange={() => handleRequireApiKey(!requireApiKey)}
           />
-        </div>
+        </div>}
 
-        {isRemoteHost && !requireApiKey && (
+        {isAdmin && isRemoteHost && !requireApiKey && (
           <div className="mb-4 -mt-2">
             <SecurityWarning message="Endpoint is exposed without an API key." />
           </div>
@@ -991,21 +1004,26 @@ export default function APIPageClient({ machineId }) {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col">
+          <div className="overflow-hidden rounded-xl border border-border-subtle">
             {keys.map((key) => (
               <div
                 key={key.id}
-                className={`group flex items-center justify-between py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
+                className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3.5 transition-colors hover:bg-surface-2/45 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${key.isActive === false ? "opacity-60" : ""}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{key.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs text-text-muted font-mono">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-semibold">{key.name}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${key.isActive === false ? "bg-surface-3 text-text-muted" : "bg-primary/10 text-primary"}`}>
+                      {key.isActive === false ? "Paused" : "Active"}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+                    <code className="truncate text-xs text-text-muted font-mono">
                       {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
                     </code>
                     <button
                       onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      className="grid size-6 shrink-0 place-items-center rounded-md text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
                       title={visibleKeys.has(key.id) ? "Hide key" : "Show key"}
                     >
                       <span className="material-symbols-outlined text-[14px]">
@@ -1014,21 +1032,19 @@ export default function APIPageClient({ machineId }) {
                     </button>
                     <button
                       onClick={() => copy(key.key, key.id)}
-                      className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                      className="grid size-6 shrink-0 place-items-center rounded-md text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+                      title="Copy API key"
                     >
                       <span className="material-symbols-outlined text-[14px]">
                         {copied === key.id ? "check" : "content_copy"}
                       </span>
                     </button>
                   </div>
-                  <p className="text-xs text-text-muted mt-1">
-                    Created {new Date(key.createdAt).toLocaleDateString()}
-                  </p>
-                  {key.isActive === false && (
-                    <p className="text-xs text-orange-500 mt-1">Paused</p>
-                  )}
                 </div>
-                <div className="flex items-center gap-2">
+                <p className="hidden text-right text-xs text-text-muted sm:block">
+                  Created<br />{new Date(key.createdAt).toLocaleDateString()}
+                </p>
+                <div className="flex items-center gap-1.5">
                   <Toggle
                     size="sm"
                     checked={key.isActive ?? true}
@@ -1050,7 +1066,8 @@ export default function APIPageClient({ machineId }) {
                   />
                   <button
                     onClick={() => handleDeleteKey(key.id)}
-                    className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                    className="grid size-8 place-items-center rounded-lg text-red-500 transition-colors hover:bg-red-500/10"
+                    title="Delete API key"
                   >
                     <span className="material-symbols-outlined text-[18px]">delete</span>
                   </button>
@@ -1131,7 +1148,7 @@ export default function APIPageClient({ machineId }) {
       </Modal>
 
       {/* Enable Tunnel Modal */}
-      <Modal
+      {isAdmin && <Modal
         isOpen={showEnableTunnelModal}
         title="Enable Tunnel"
         onClose={() => setShowEnableTunnelModal(false)}
@@ -1172,10 +1189,10 @@ export default function APIPageClient({ machineId }) {
             <Button onClick={() => setShowEnableTunnelModal(false)} variant="ghost" fullWidth>Cancel</Button>
           </div>
         </div>
-      </Modal>
+      </Modal>}
 
       {/* Disable Cloudflare Tunnel Modal */}
-      <Modal
+      {isAdmin && <Modal
         isOpen={showDisableTunnelModal}
         title="Disable Tunnel"
         onClose={() => !tunnelLoading && setShowDisableTunnelModal(false)}
@@ -1189,10 +1206,10 @@ export default function APIPageClient({ machineId }) {
             <Button onClick={() => setShowDisableTunnelModal(false)} variant="ghost" fullWidth disabled={tunnelLoading}>Cancel</Button>
           </div>
         </div>
-      </Modal>
+      </Modal>}
 
       {/* Tailscale Modal */}
-      <Modal
+      {isAdmin && <Modal
         isOpen={showTsModal}
         title="Tailscale Funnel"
         onClose={() => { if (!tsInstalling) { setShowTsModal(false); setTsSudoPassword(""); setTsStatus(null); } }}
@@ -1257,10 +1274,10 @@ export default function APIPageClient({ machineId }) {
 
           {tsStatus && <StatusAlert status={tsStatus} />}
         </div>
-      </Modal>
+      </Modal>}
 
       {/* Disable Tailscale Modal */}
-      <Modal
+      {isAdmin && <Modal
         isOpen={showDisableTsModal}
         title="Disable Tailscale"
         onClose={() => !tsLoading && setShowDisableTsModal(false)}
@@ -1274,7 +1291,7 @@ export default function APIPageClient({ machineId }) {
             <Button onClick={() => setShowDisableTsModal(false)} variant="ghost" fullWidth disabled={tsLoading}>Cancel</Button>
           </div>
         </div>
-      </Modal>
+      </Modal>}
 
       {/* Confirm Modal */}
       <ConfirmModal
@@ -1292,4 +1309,5 @@ export default function APIPageClient({ machineId }) {
 
 APIPageClient.propTypes = {
   machineId: PropTypes.string.isRequired,
+  isAdmin: PropTypes.bool.isRequired,
 };

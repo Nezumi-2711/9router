@@ -41,6 +41,21 @@ export async function PATCH(request) {
   try {
     const body = await request.json();
 
+    if (
+      Object.prototype.hasOwnProperty.call(body, "requireApiKey") ||
+      Object.prototype.hasOwnProperty.call(body, "tunnelDashboardAccess")
+    ) {
+      let user;
+      try {
+        user = await requireCurrentDashboardUser();
+      } catch {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      if (user.role !== "admin") {
+        return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+      }
+    }
+
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 

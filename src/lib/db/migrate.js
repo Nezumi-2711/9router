@@ -111,6 +111,7 @@ function syncSchemaFromTables(adapter) {
 // ─── Legacy JSON import (one-time) ───────────────────────────────────────
 function importLegacyMain(adapter, data) {
   if (!data || typeof data !== "object") return;
+  const defaultKeyOwner = adapter.get(`SELECT id FROM users WHERE role = 'admin' ORDER BY createdAt ASC LIMIT 1`)?.id || null;
 
   if (data.settings) {
     adapter.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(data.settings)]);
@@ -142,8 +143,8 @@ function importLegacyMain(adapter, data) {
 
   importWithAssertion(adapter, "apiKeys", data.apiKeys || [], (k) => {
     adapter.run(
-      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-      [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
+      `INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, ownerId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+      [k.id, k.key, k.name || null, k.machineId || null, k.ownerId || defaultKeyOwner, k.isActive === false ? 0 : 1, k.createdAt || new Date().toISOString()]
     );
   }, (k) => ({ id: k.id ?? null, name: k.name ?? null }));
 

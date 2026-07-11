@@ -8,6 +8,7 @@ function rowToKey(row) {
     key: row.key,
     name: row.name,
     machineId: row.machineId,
+    ownerId: row.ownerId,
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt,
   };
@@ -19,13 +20,25 @@ export async function getApiKeys() {
   return rows.map(rowToKey);
 }
 
+export async function getApiKeysByOwnerId(ownerId) {
+  const db = await getAdapter();
+  const rows = db.all(`SELECT * FROM apiKeys WHERE ownerId = ? ORDER BY createdAt ASC`, [ownerId]);
+  return rows.map(rowToKey);
+}
+
 export async function getApiKeyById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
   return rowToKey(row);
 }
 
-export async function createApiKey(name, machineId) {
+export async function getApiKeyByIdAndOwnerId(id, ownerId) {
+  const db = await getAdapter();
+  const row = db.get(`SELECT * FROM apiKeys WHERE id = ? AND ownerId = ?`, [id, ownerId]);
+  return rowToKey(row);
+}
+
+export async function createApiKey(name, machineId, ownerId = null) {
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");
@@ -35,12 +48,13 @@ export async function createApiKey(name, machineId) {
     name,
     key: result.key,
     machineId,
+    ownerId,
     isActive: true,
     createdAt: new Date().toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, ownerId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, apiKey.ownerId, 1, apiKey.createdAt]
   );
   return apiKey;
 }
@@ -53,8 +67,8 @@ export async function updateApiKey(id, data) {
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, ownerId = ?, isActive = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.ownerId, merged.isActive ? 1 : 0, id]
     );
     result = merged;
   });

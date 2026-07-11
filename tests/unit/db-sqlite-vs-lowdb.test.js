@@ -65,6 +65,18 @@ describe("DB SQLite layer — public API parity", () => {
     expect(await sqliteDb.getApiKeyById(k.id)).toBeNull();
   });
 
+  it("apiKeys: scopes retrieval to key owner", async () => {
+    const ownerOne = await sqliteDb.createUser({ username: "key-owner-one", password: "password", role: "user" });
+    const ownerTwo = await sqliteDb.createUser({ username: "key-owner-two", password: "password", role: "user" });
+    const firstKey = await sqliteDb.createApiKey("owner-one-key", "machine-abc", ownerOne.id);
+    const secondKey = await sqliteDb.createApiKey("owner-two-key", "machine-abc", ownerTwo.id);
+
+    const firstOwnerKeys = await sqliteDb.getApiKeysByOwnerId(ownerOne.id);
+    expect(firstOwnerKeys.map((key) => key.id)).toContain(firstKey.id);
+    expect(firstOwnerKeys.map((key) => key.id)).not.toContain(secondKey.id);
+    expect(await sqliteDb.getApiKeyByIdAndOwnerId(firstKey.id, ownerTwo.id)).toBeNull();
+  });
+
   it("providerConnections: CRUD + reorder by priority", async () => {
     const c1 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "a", apiKey: "k1" });
     const c2 = await sqliteDb.createProviderConnection({ provider: "test", authType: "apikey", name: "b", apiKey: "k2" });
