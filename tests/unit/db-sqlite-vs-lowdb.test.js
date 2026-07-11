@@ -352,6 +352,20 @@ describe("DB SQLite layer — public API parity", () => {
     expect((await sqliteDb.getModelAliases()).marker).toBe("before");
   });
 
+  it("exportDb / importDb preserves disabled model settings", async () => {
+    await sqliteDb.disableModels("backup-provider", ["backup-model"]);
+    const snapshot = await sqliteDb.exportDb();
+
+    expect(snapshot.disabledModels).toMatchObject({
+      "backup-provider": ["backup-model"],
+    });
+
+    await sqliteDb.enableModels("backup-provider", []);
+    await sqliteDb.importDb(snapshot);
+
+    expect(await sqliteDb.getDisabledByProvider("backup-provider")).toEqual(["backup-model"]);
+  });
+
   it("pricing: user pricing merged with constants", async () => {
     await sqliteDb.updatePricing({ openai: { "gpt-test": { input: 1, output: 2 } } });
     const p = await sqliteDb.getPricing();

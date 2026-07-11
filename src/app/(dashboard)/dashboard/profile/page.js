@@ -9,6 +9,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
+import useUserStore from "@/store/userStore";
 
 function getLocaleFromCookie() {
   if (typeof document === "undefined") return "en";
@@ -21,6 +22,8 @@ function getLocaleFromCookie() {
 
 export default function ProfilePage() {
   const { theme, setTheme, isDark } = useTheme();
+  const user = useUserStore((state) => state.user);
+  const fetchCurrentUser = useUserStore((state) => state.fetchCurrentUser);
   const [locale, setLocale] = useState("en");
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -57,6 +60,10 @@ export default function ProfilePage() {
   const [proxyStatus, setProxyStatus] = useState({ type: "", message: "" });
   const [proxyLoading, setProxyLoading] = useState(false);
   const [proxyTestLoading, setProxyTestLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) fetchCurrentUser();
+  }, [fetchCurrentUser, user]);
 
   useEffect(() => {
     setLocale(getLocaleFromCookie());
@@ -532,6 +539,13 @@ export default function ProfilePage() {
         throw new Error(data.error || "Failed to import database");
       }
 
+      // A backup may replace the current account and its permissions. The API
+      // clears the session cookie; redirect immediately to prevent stale data.
+      if (data.requiresLogin) {
+        window.location.assign("/login");
+        return;
+      }
+
       await reloadSettings();
       setDbStatus({ type: "success", message: "Database imported successfully" });
     } catch (err) {
@@ -610,46 +624,51 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-3 pt-4 border-t border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
-              <div>
-                <p className="font-medium text-sm sm:text-base">Database Location</p>
-                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
+          {user?.role === "admin" ? (
+            <div className="flex flex-col gap-3 pt-4 border-t border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
+                <div>
+                  <p className="font-medium text-sm sm:text-base">Database Location</p>
+                  <p className="text-xs sm:text-sm text-text-muted font-mono break-all">~/.9router/db/data.sqlite</p>
+                </div>
               </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                variant="secondary"
-                icon="download"
-                onClick={() => setDbAuth({ open: true, mode: "export", password: "" })}
-                loading={dbLoading}
-                className="w-full sm:w-auto"
-              >
-                Download Backup
-              </Button>
-              <Button
-                variant="outline"
-                icon="upload"
-                onClick={() => importFileRef.current?.click()}
-                disabled={dbLoading}
-                className="w-full sm:w-auto"
-              >
-                Import Backup
-              </Button>
-              <input
-                ref={importFileRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={handleImportDatabase}
-              />
-            </div>
-            {dbStatus.message && (
-              <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
-                {dbStatus.message}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="secondary"
+                  icon="download"
+                  onClick={() => setDbAuth({ open: true, mode: "export", password: "" })}
+                  loading={dbLoading}
+                  className="w-full sm:w-auto"
+                >
+                  Download Backup
+                </Button>
+                <Button
+                  variant="outline"
+                  icon="upload"
+                  onClick={() => importFileRef.current?.click()}
+                  disabled={dbLoading}
+                  className="w-full sm:w-auto"
+                >
+                  Import Backup
+                </Button>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportDatabase}
+                />
+              </div>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Backups include connected-model availability settings from the Models page.
               </p>
-            )}
-          </div>
+              {dbStatus.message && (
+                <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                  {dbStatus.message}
+                </p>
+              )}
+            </div>
+          ) : null}
         </Card>
 
         {/* Language */}
