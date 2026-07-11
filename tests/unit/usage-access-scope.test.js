@@ -30,6 +30,21 @@ describe("usage access scope SQL predicates", () => {
     expect(params).toEqual(["connection-a", "connection-b", "key-a"]);
   });
 
+  it("uses persisted actor attribution when a user id is available", () => {
+    const conditions = [];
+    const params = [];
+
+    appendUsageAccessClause(conditions, params, {
+      isAdmin: false,
+      userId: "user-a",
+      connectionIds: ["connection-a"],
+      apiKeys: ["key-a"],
+    });
+
+    expect(conditions).toEqual(["userId = ?"]);
+    expect(params).toEqual(["user-a"]);
+  });
+
   it("denies users with no attributable resources", () => {
     const conditions = [];
     const params = [];

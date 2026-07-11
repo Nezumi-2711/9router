@@ -191,6 +191,16 @@ function importLegacyUsage(adapter, data) {
   for (const [dateKey, day] of Object.entries(data.dailySummary || {})) {
     adapter.run(`INSERT OR REPLACE INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, stringifyJson(day)]);
   }
+  // Versioned migrations run before legacy import on a fresh database, so
+  // apply the same dashboard-user attribution here for imported history.
+  adapter.run(
+    `UPDATE usageHistory
+     SET userId = COALESCE(
+       (SELECT ownerId FROM apiKeys WHERE apiKeys.key = usageHistory.apiKey AND ownerId IS NOT NULL),
+       (SELECT ownerId FROM providerConnections WHERE providerConnections.id = usageHistory.connectionId AND ownerId IS NOT NULL)
+     )
+     WHERE userId IS NULL OR userId = ''`,
+  );
   if (typeof data.totalRequestsLifetime === "number") {
     setMetaSync(adapter, "totalRequestsLifetime", data.totalRequestsLifetime);
   }

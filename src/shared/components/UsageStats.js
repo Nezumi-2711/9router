@@ -117,6 +117,7 @@ function getGroupKey(item, keyField) {
   switch (keyField) {
     case "rawModel": return item.rawModel || "Unknown Model";
     case "accountName": return item.accountName || `Account ${item.connectionId?.slice(0, 8)}...` || "Unknown Account";
+    case "username": return item.username || "Unattributed";
     case "keyName": return item.keyName || "Unknown Key";
     case "endpoint": return item.endpoint || "Unknown Endpoint";
     default: return item[keyField] || "Unknown";
@@ -161,10 +162,10 @@ const MODEL_COLUMNS = [
   { field: "lastUsed", label: "Last Used", align: "right" },
 ];
 
-const ACCOUNT_COLUMNS = [
+const USER_COLUMNS = [
+  { field: "username", label: "User" },
   { field: "rawModel", label: "Model" },
   { field: "provider", label: "Provider" },
-  { field: "accountName", label: "Account" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
 ];
@@ -187,7 +188,7 @@ const ENDPOINT_COLUMNS = [
 
 const TABLE_OPTIONS = [
   { value: "model", label: "Usage by Model" },
-  { value: "account", label: "Usage by Account" },
+  { value: "user", label: "Usage by User" },
   { value: "apiKey", label: "Usage by API Key" },
   { value: "endpoint", label: "Usage by Endpoint" },
 ];
@@ -218,6 +219,11 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const hasLoadedStats = useRef(false);
   const period = periodProp ?? periodLocal;
   const setPeriod = setPeriodProp ?? setPeriodLocal;
+  const tableOptions = useMemo(() => {
+    const allowedViews = new Set(stats?.availableTableViews || ["model", "endpoint"]);
+    return TABLE_OPTIONS.filter((option) => allowedViews.has(option.value));
+  }, [stats?.availableTableViews]);
+  const activeTableView = tableOptions.some((option) => option.value === tableView) ? tableView : "model";
 
   // Fetch connected providers once, deduplicate by provider type
   // Always include noAuth free providers (e.g. opencode) regardless of connections
@@ -319,7 +325,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   // Compute active table data
   const activeTableConfig = useMemo(() => {
     if (!stats) return null;
-    switch (tableView) {
+    switch (activeTableView) {
       case "model": {
         const pendingMap = stats.pending?.byModel || {};
         return {
@@ -344,22 +350,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           ),
         };
       }
-      case "account": {
-        const pendingMap = {};
-        if (stats?.pending?.byAccount) {
-          Object.entries(stats.byAccount || {}).forEach(([accountKey, data]) => {
-            const connPending = stats.pending.byAccount[data.connectionId];
-            if (connPending) {
-              const modelKey = data.provider ? `${data.rawModel} (${data.provider})` : data.rawModel;
-              pendingMap[accountKey] = connPending[modelKey] || 0;
-            }
-          });
-        }
+      case "user": {
         return {
-          columns: ACCOUNT_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byAccount, pendingMap, sortBy, sortOrder), "accountName"),
-          storageKey: "usage-stats:expanded-accounts",
-          emptyMessage: "No account-specific usage recorded yet.",
+          columns: USER_COLUMNS,
+          groupedData: groupDataByKey(sortData(stats.byUser, {}, sortBy, sortOrder), "username"),
+          storageKey: "usage-stats:expanded-users",
+          emptyMessage: "No user-specific usage recorded yet.",
           renderSummaryCells: (group) => (
             <>
               <td className="px-6 py-3 text-text-muted">—</td>
@@ -370,7 +366,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           ),
           renderDetailCells: (item) => (
             <>
-              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.accountName || `Account ${item.connectionId?.slice(0, 8)}...`}</td>
+              <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.username || "Unattributed"}</td>
               <td className={`px-6 py-3 font-medium transition-colors ${item.pending > 0 ? "text-primary" : ""}`}>{item.rawModel}</td>
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
@@ -431,7 +427,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         };
       }
     }
-  }, [stats, tableView, sortBy, sortOrder]);
+  }, [stats, activeTableView, sortBy, sortOrder]);
 
   if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
 
@@ -487,12 +483,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <select
-            value={tableView}
+            value={activeTableView}
             onChange={(e) => setTableView(e.target.value)}
             className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
             style={{ colorScheme: 'auto' }}
           >
-            {TABLE_OPTIONS.map((opt) => (
+            {tableOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
@@ -516,7 +512,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             title=""
             columns={activeTableConfig.columns}
             groupedData={activeTableConfig.groupedData}
-            tableType={tableView}
+            tableType={activeTableView}
             sortBy={sortBy}
             sortOrder={sortOrder}
             onToggleSort={toggleSort}

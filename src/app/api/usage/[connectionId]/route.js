@@ -2,29 +2,35 @@
 import "open-sse/index.js";
 
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
-import { getUsageForProvider } from "open-sse/services/usage.js";
-import { getExecutor } from "open-sse/executors/index.js";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
-import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
+import { getExecutor } from "open-sse/executors/index.js";
+import { getUsageForProvider } from "open-sse/services/usage.js";
 
-// Detect auth-expired messages returned by usage providers instead of throwing
-const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
+const AUTH_EXPIRED_PATTERNS = [
+  "expired",
+  "authentication",
+  "unauthorized",
+  "401",
+  "re-authorize",
+];
+
 function isAuthExpiredMessage(usage) {
   if (!usage?.message) return false;
-  const msg = usage.message.toLowerCase();
-  return AUTH_EXPIRED_PATTERNS.some((p) => msg.includes(p));
+  const message = usage.message.toLowerCase();
+  return AUTH_EXPIRED_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
 /**
- * Refresh credentials using executor and update database
- * @param {boolean} force - Skip needsRefresh check and always attempt refresh
- * @returns Promise<{ connection, refreshed: boolean }>
+ * Refresh connection credentials when required and persist the result.
+ * @param {object} connection Provider connection.
+ * @param {boolean} force Refresh even if the executor considers the token valid.
+ * @param {object|null} proxyOptions Connection proxy configuration.
+ * @returns {Promise<{ connection: object, refreshed: boolean }>}
  */
 export async function refreshAndUpdateCredentials(connection, force = false, proxyOptions = null) {
   const executor = getExecutor(connection.provider);
-
-  // Build credentials object from connection
   const credentials = {
     accessToken: connection.accessToken,
     refreshToken: connection.refreshToken,
@@ -33,54 +39,26 @@ export async function refreshAndUpdateCredentials(connection, force = false, pro
     lastRefreshAt: connection.lastRefreshAt,
     connectionId: connection.id,
     providerSpecificData: connection.providerSpecificData,
-    // For GitHub
     copilotToken: connection.providerSpecificData?.copilotToken,
     copilotTokenExpiresAt: connection.providerSpecificData?.copilotTokenExpiresAt,
   };
 
-  // Check if refresh is needed (skip when force=true)
-  const needsRefresh = force || executor.needsRefresh(credentials);
-
-  if (!needsRefresh) {
+  if (!force && !executor.needsRefresh(credentials)) {
     return { connection, refreshed: false };
   }
 
-  // Use executor's refreshCredentials method (with optional proxy)
   const refreshResult = await executor.refreshCredentials(credentials, console, proxyOptions);
-
   if (!refreshResult) {
-    // Refresh failed but we still have an accessToken — try with existing token
-    if (connection.accessToken) {
-      return { connection, refreshed: false };
-    }
+    if (connection.accessToken) return { connection, refreshed: false };
     throw new Error("Failed to refresh credentials. Please re-authorize the connection.");
   }
 
-  // Build update object
-  const now = new Date().toISOString();
-  const updateData = {
-    updatedAt: now,
-  };
+  const updateData = { updatedAt: new Date().toISOString() };
+  if (refreshResult.accessToken) updateData.accessToken = refreshResult.accessToken;
+  if (refreshResult.refreshToken) updateData.refreshToken = refreshResult.refreshToken;
+  if (refreshResult.idToken) updateData.idToken = refreshResult.idToken;
+  if (refreshResult.lastRefreshAt) updateData.lastRefreshAt = refreshResult.lastRefreshAt;
 
-  // Update accessToken if present
-  if (refreshResult.accessToken) {
-    updateData.accessToken = refreshResult.accessToken;
-  }
-
-  // Update refreshToken if present
-  if (refreshResult.refreshToken) {
-    updateData.refreshToken = refreshResult.refreshToken;
-  }
-
-  if (refreshResult.idToken) {
-    updateData.idToken = refreshResult.idToken;
-  }
-
-  if (refreshResult.lastRefreshAt) {
-    updateData.lastRefreshAt = refreshResult.lastRefreshAt;
-  }
-
-  // Update token expiry
   if (refreshResult.expiresIn) {
     updateData.expiresAt = new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString();
     updateData.expiresIn = refreshResult.expiresIn;
@@ -88,11 +66,12 @@ export async function refreshAndUpdateCredentials(connection, force = false, pro
     updateData.expiresAt = refreshResult.expiresAt;
   }
 
-  // Handle provider-specific data (copilotToken for GitHub, etc.)
   const providerSpecificUpdates = {
     ...(refreshResult.providerSpecificData || {}),
     ...(refreshResult.copilotToken ? { copilotToken: refreshResult.copilotToken } : {}),
-    ...(refreshResult.copilotTokenExpiresAt ? { copilotTokenExpiresAt: refreshResult.copilotTokenExpiresAt } : {}),
+    ...(refreshResult.copilotTokenExpiresAt
+      ? { copilotTokenExpiresAt: refreshResult.copilotTokenExpiresAt }
+      : {}),
   };
   if (Object.keys(providerSpecificUpdates).length > 0) {
     updateData.providerSpecificData = {
@@ -101,51 +80,44 @@ export async function refreshAndUpdateCredentials(connection, force = false, pro
     };
   }
 
-  // Update database
   await updateProviderConnection(connection.id, updateData);
 
-  // Return updated connection
-  const updatedConnection = {
-    ...connection,
-    ...updateData,
-    providerSpecificData: updateData.providerSpecificData || connection.providerSpecificData,
-  };
-
   return {
-    connection: updatedConnection,
+    connection: {
+      ...connection,
+      ...updateData,
+      providerSpecificData: updateData.providerSpecificData || connection.providerSpecificData,
+    },
     refreshed: true,
   };
 }
 
 /**
- * GET /api/usage/[connectionId] - Get usage data for a specific connection
+ * GET /api/usage/[connectionId] - Get quota data for one provider connection.
  */
-export async function GET(request, { params }) {
+export async function GET(_request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
+    const user = await requireUsageDashboardUser();
 
-
-    // Get connection from database
-    connection = await getProviderConnectionById(connectionId);
+    connection = await getProviderConnectionById(
+      connectionId,
+      user.role === "admin" ? null : user.id,
+    );
     if (!connection) {
       return Response.json({ error: "Connection not found" }, { status: 404 });
     }
 
-    // Allow OAuth connections, plus whitelisted apikey providers (glm/minimax/kiro/...)
-    // Kiro's headless api-key flow persists authType "api_key" (underscore) while
-    // generic apikey providers persist "apikey" — accept both spellings here.
     const isOAuth = connection.authType === "oauth";
     const isApikeyAuth =
       connection.authType === "apikey" || connection.authType === "api_key";
     const isApikeyEligible =
       isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
-
     if (!isOAuth && !isApikeyEligible) {
       return Response.json({ message: "Usage not available for this connection" });
     }
 
-    // Resolve connection proxy config; force strictProxy=false so quota/refresh fall back to direct on failure
     const proxyConfig = await resolveConnectionProxyConfig(connection.providerSpecificData);
     const proxyOptions = {
       connectionProxyEnabled: proxyConfig.connectionProxyEnabled === true,
@@ -155,25 +127,21 @@ export async function GET(request, { params }) {
       strictProxy: false,
     };
 
-    // Refresh credentials only for OAuth connections (apikey has no token refresh)
     if (isOAuth) {
       try {
         const result = await refreshAndUpdateCredentials(connection, false, proxyOptions);
         connection = result.connection;
       } catch (refreshError) {
         console.error("[Usage API] Credential refresh failed:", refreshError);
-        return Response.json({
-          error: `Credential refresh failed: ${refreshError.message}`
-        }, { status: 401 });
+        return Response.json(
+          { error: `Credential refresh failed: ${refreshError.message}` },
+          { status: 401 },
+        );
       }
     }
-          const user = await requireUsageDashboardUser();
 
-    // Fetch usage from provider API
-          connection = await getProviderConnectionById(connectionId, user.role === "admin" ? null : user.id);
+    let usage = await getUsageForProvider(connection, proxyOptions);
 
-    // If provider returned an auth-expired message instead of throwing,
-    // force-refresh token and retry once (OAuth only)
     if (isOAuth && isAuthExpiredMessage(usage) && connection.refreshToken) {
       try {
         const retryResult = await refreshAndUpdateCredentials(connection, true, proxyOptions);
@@ -186,7 +154,10 @@ export async function GET(request, { params }) {
 
     return Response.json(usage);
   } catch (error) {
-    if (error?.message === "Unauthorized") return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (error?.message === "Unauthorized") {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Usage] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });

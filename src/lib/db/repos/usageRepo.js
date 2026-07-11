@@ -78,6 +78,7 @@ function aggregateEntryToDay(day, entry) {
   day.byModel ||= {};
   day.byAccount ||= {};
   day.byApiKey ||= {};
+  day.byUser ||= {};
   day.byEndpoint ||= {};
 
   if (entry.provider) addToCounter(day.byProvider, entry.provider, vals);
@@ -92,6 +93,9 @@ function aggregateEntryToDay(day, entry) {
   const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : "local-no-key";
   const akModelKey = `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`;
   addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
+
+  const userKey = `${entry.userId || "unattributed"}|${entry.model}|${entry.provider || "unknown"}`;
+  addToCounter(day.byUser, userKey, { ...vals, meta: { userId: entry.userId || null, rawModel: entry.model, provider: entry.provider } });
 
   const endpoint = entry.endpoint || "Unknown";
   const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
@@ -123,10 +127,10 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, userId, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
-      apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
+      apiKey: r.apiKey, userId: r.userId, endpoint: r.endpoint, cost: r.cost, status: r.status,
       tokens: parseJson(r.tokens, {}),
     }));
   } catch {}
@@ -218,7 +222,7 @@ export async function getActiveRequests(user = null) {
   await ensureRingInitialized();
   const seen = new Set();
   const recentRequests = [...recentRing.items]
-    .filter((entry) => scope.isAdmin || allowedConnectionIds.has(entry.connectionId) || scope.apiKeys.includes(entry.apiKey))
+    .filter((entry) => scope.isAdmin || entry.userId === scope.userId)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((e) => {
       const t = e.tokens || {};
@@ -250,6 +254,20 @@ export async function saveRequestUsage(entry) {
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
     entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
 
+    // The API key identifies the caller and therefore takes precedence over
+    // the provider connection owner. This gives every stored request one
+    // dashboard actor and prevents cross-user double counting.
+    if (!entry.userId) {
+      const keyOwner = entry.apiKey
+        ? db.get(`SELECT ownerId FROM apiKeys WHERE key = ? AND ownerId IS NOT NULL`, [entry.apiKey])?.ownerId
+        : null;
+      entry.userId = keyOwner
+        || (entry.connectionId
+          ? db.get(`SELECT ownerId FROM providerConnections WHERE id = ? AND ownerId IS NOT NULL`, [entry.connectionId])?.ownerId
+          : null)
+        || null;
+    }
+
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
@@ -266,12 +284,13 @@ export async function saveRequestUsage(entry) {
            AND COALESCE(model, '') = COALESCE(?, '')
            AND COALESCE(connectionId, '') = COALESCE(?, '')
            AND COALESCE(apiKey, '') = COALESCE(?, '')
+           AND COALESCE(userId, '') = COALESCE(?, '')
            AND promptTokens = ?
            AND completionTokens = ?
          ORDER BY id DESC LIMIT 1`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null,
+          entry.connectionId || null, entry.apiKey || null, entry.userId || null,
           promptTokens, completionTokens,
         ]
       );
@@ -284,10 +303,10 @@ export async function saveRequestUsage(entry) {
       }
 
       db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, userId, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+          entry.connectionId || null, entry.apiKey || null, entry.userId || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
           stringifyJson(tokens), stringifyJson({}),
         ]
@@ -297,7 +316,7 @@ export async function saveRequestUsage(entry) {
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
       const day = row ? parseJson(row.data, {}) : {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
-        byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
+        byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byUser: {}, byEndpoint: {},
       };
       aggregateEntryToDay(day, entry);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
@@ -359,6 +378,7 @@ function createEmptyUsageStats() {
     byModel: {},
     byAccount: {},
     byApiKey: {},
+    byUser: {},
     byEndpoint: {},
     last10Minutes: Array.from({ length: 10 }, () => ({ requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 })),
     pending: { byModel: {}, byAccount: {} },
@@ -366,6 +386,65 @@ function createEmptyUsageStats() {
     recentRequests: [],
     errorProvider: "",
   };
+}
+
+const USER_TABLE_VIEWS = ["model", "endpoint"];
+const ADMIN_TABLE_VIEWS = ["model", "user", "apiKey", "endpoint"];
+
+function applyUsageViewPermissions(stats, user) {
+  if (user?.role === "admin") {
+    return { ...stats, availableTableViews: ADMIN_TABLE_VIEWS };
+  }
+
+  // Do not rely on UI hiding: user-specific responses deliberately omit
+  // account, API-key, and cross-dashboard-user breakdowns.
+  const { byAccount, byApiKey, byUser, pending, ...safeStats } = stats;
+  return {
+    ...safeStats,
+    pending: { ...pending, byAccount: {} },
+    availableTableViews: USER_TABLE_VIEWS,
+  };
+}
+
+function addUserBreakdown(stats, rows, providerNodeNameMap) {
+  for (const row of rows) {
+    const tokens = parseJson(row.tokens, {}) || {};
+    const promptTokens = row.promptTokens || tokens.prompt_tokens || tokens.input_tokens || 0;
+    const completionTokens = row.completionTokens || tokens.completion_tokens || tokens.output_tokens || 0;
+    const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
+    const provider = row.provider || "unknown";
+    const username = row.username || "Unattributed";
+    const userKey = `${row.userId || "unattributed"}|${row.model}|${provider}`;
+    addToCounter(stats.byUser, userKey, {
+      promptTokens,
+      completionTokens,
+      cachedTokens,
+      cost: row.cost || 0,
+      meta: {
+        userId: row.userId || null,
+        username,
+        rawModel: row.model,
+        provider: providerNodeNameMap[provider] || provider,
+        lastUsed: row.timestamp,
+      },
+    });
+    if (new Date(row.timestamp) > new Date(stats.byUser[userKey].lastUsed)) {
+      stats.byUser[userKey].lastUsed = row.timestamp;
+    }
+  }
+}
+
+function loadUserBreakdownRows(db, period) {
+  const cutoff = getUsagePeriodCutoff(period);
+  const where = cutoff ? "WHERE h.timestamp >= ?" : "";
+  return db.all(
+    `SELECT h.timestamp, h.provider, h.model, h.userId, h.promptTokens, h.completionTokens, h.cost, h.tokens, u.username
+     FROM usageHistory h
+     LEFT JOIN users u ON u.id = h.userId
+     ${where}
+     ORDER BY h.id DESC`,
+    cutoff ? [cutoff] : [],
+  );
 }
 
 function getUsagePeriodCutoff(period) {
@@ -484,11 +563,15 @@ async function getScopedUsageStats(period, user, scope) {
       stats.pending.byModel[model] = (stats.pending.byModel[model] || 0) + count;
     }
   }
-  return stats;
+  return applyUsageViewPermissions(stats, user);
 }
 
 export async function getUsageStats(period = "all", user = null) {
-  const scope = await getUsageAccessScope(user);
+  // Internal callers without a dashboard principal retain the historical
+  // system-wide behavior. Public API routes always supply an authenticated user.
+  const scope = user
+    ? await getUsageAccessScope(user)
+    : { isAdmin: true, userId: null, connectionIds: [], apiKeys: [] };
   if (!scope.isAdmin) return getScopedUsageStats(period, user, scope);
   const db = await getAdapter();
 
@@ -541,7 +624,7 @@ export async function getUsageStats(period = "all", user = null) {
   const stats = {
     totalRequests: 0,
     totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedTokens: 0, totalCost: 0,
-    byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
+    byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byUser: {}, byEndpoint: {},
     last10Minutes: [],
     pending: pendingRequests,
     activeRequests: [],
@@ -801,7 +884,10 @@ export async function getUsageStats(period = "all", user = null) {
   }
 
   stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
-  return stats;
+  if (scope.isAdmin) {
+    addUserBreakdown(stats, loadUserBreakdownRows(db, period), providerNodeNameMap);
+  }
+  return applyUsageViewPermissions(stats, user || { role: "admin" });
 }
 
 function buildChartDataFromRows(rows, period) {
@@ -830,7 +916,9 @@ function buildChartDataFromRows(rows, period) {
 
 export async function getChartData(period = "7d", user = null) {
   const db = await getAdapter();
-  const scope = await getUsageAccessScope(user);
+  const scope = user
+    ? await getUsageAccessScope(user)
+    : { isAdmin: true, userId: null, connectionIds: [], apiKeys: [] };
   if (!scope.isAdmin) {
     const conds = [];
     const params = [];

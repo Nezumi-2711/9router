@@ -10,11 +10,11 @@ import { getAdapter } from "../driver.js";
  */
 export async function getUsageAccessScope(user) {
   if (user?.role === "admin") {
-    return { isAdmin: true, connectionIds: [], apiKeys: [] };
+    return { isAdmin: true, userId: null, connectionIds: [], apiKeys: [] };
   }
 
   if (!user?.id) {
-    return { isAdmin: false, connectionIds: [], apiKeys: [] };
+    return { isAdmin: false, userId: null, connectionIds: [], apiKeys: [] };
   }
 
   const db = await getAdapter();
@@ -27,7 +27,7 @@ export async function getUsageAccessScope(user) {
     [user.id],
   ).map((row) => row.key);
 
-  return { isAdmin: false, connectionIds, apiKeys };
+  return { isAdmin: false, userId: user.id, connectionIds, apiKeys };
 }
 
 /**
@@ -35,16 +35,26 @@ export async function getUsageAccessScope(user) {
  *
  * @param {string[]} conditions SQL conditions to append to.
  * @param {unknown[]} params Bound parameters corresponding to conditions.
- * @param {{ isAdmin: boolean, connectionIds: string[], apiKeys: string[] }} scope
- * @param {{ connectionColumn?: string, apiKeyColumn?: string | null }} options
+ * @param {{ isAdmin: boolean, userId?: string | null, connectionIds: string[], apiKeys: string[] }} scope
+ * @param {{ connectionColumn?: string, apiKeyColumn?: string | null, userColumn?: string | null }} options
  */
 export function appendUsageAccessClause(
   conditions,
   params,
   scope,
-  { connectionColumn = "connectionId", apiKeyColumn = "apiKey" } = {},
+  { connectionColumn = "connectionId", apiKeyColumn = "apiKey", userColumn = "userId" } = {},
 ) {
   if (scope?.isAdmin) return;
+
+  // usageHistory records persist the resolved actor. This avoids an API key
+  // owned by one user and a provider connection owned by another appearing in
+  // both users' dashboards. Repositories without a userId column explicitly
+  // pass userColumn: null and retain their resource-level access predicate.
+  if (userColumn && scope?.userId) {
+    conditions.push(`${userColumn} = ?`);
+    params.push(scope.userId);
+    return;
+  }
 
   const ownershipConditions = [];
   if (scope?.connectionIds?.length) {

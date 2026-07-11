@@ -155,7 +155,7 @@ export async function getRequestDetails(filter = {}, user = null) {
   if (filter.status) { conds.push("status = ?"); params.push(filter.status); }
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
-  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null });
+  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null, userColumn: null });
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const cntRow = db.get(`SELECT COUNT(*) as c FROM requestDetails ${where}`, params);
@@ -183,7 +183,7 @@ export async function getDistinctProviders(user = null) {
   const scope = await getUsageAccessScope(user);
   const conds = ["provider IS NOT NULL"];
   const params = [];
-  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null });
+  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null, userColumn: null });
   const rows = db.all(`SELECT DISTINCT provider FROM requestDetails WHERE ${conds.join(" AND ")} ORDER BY provider ASC`, params);
   return rows.map((r) => r.provider);
 }
@@ -193,7 +193,7 @@ export async function getRequestDetailById(id, user = null) {
   const scope = await getUsageAccessScope(user);
   const conds = ["id = ?"];
   const params = [id];
-  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null });
+  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null, userColumn: null });
   const row = db.get(`SELECT data FROM requestDetails WHERE ${conds.join(" AND ")}`, params);
   return row ? parseJson(row.data, null) : null;
 }
