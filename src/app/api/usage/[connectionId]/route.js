@@ -6,6 +6,7 @@ import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -166,9 +167,10 @@ export async function GET(request, { params }) {
         }, { status: 401 });
       }
     }
+          const user = await requireUsageDashboardUser();
 
     // Fetch usage from provider API
-    let usage = await getUsageForProvider(connection, proxyOptions);
+          connection = await getProviderConnectionById(connectionId, user.role === "admin" ? null : user.id);
 
     // If provider returned an auth-expired message instead of throwing,
     // force-refresh token and retry once (OAuth only)
@@ -184,6 +186,7 @@ export async function GET(request, { params }) {
 
     return Response.json(usage);
   } catch (error) {
+    if (error?.message === "Unauthorized") return Response.json({ error: "Unauthorized" }, { status: 401 });
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Usage] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });

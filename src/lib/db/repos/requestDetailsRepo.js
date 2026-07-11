@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { appendUsageAccessClause, getUsageAccessScope } from "./usageAccessScope.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -142,8 +143,9 @@ export async function saveRequestDetail(detail) {
   }
 }
 
-export async function getRequestDetails(filter = {}) {
+export async function getRequestDetails(filter = {}, user = null) {
   const db = await getAdapter();
+  const scope = await getUsageAccessScope(user);
   const conds = [];
   const params = [];
 
@@ -153,6 +155,7 @@ export async function getRequestDetails(filter = {}) {
   if (filter.status) { conds.push("status = ?"); params.push(filter.status); }
   if (filter.startDate) { conds.push("timestamp >= ?"); params.push(new Date(filter.startDate).toISOString()); }
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
+  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null });
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const cntRow = db.get(`SELECT COUNT(*) as c FROM requestDetails ${where}`, params);
@@ -175,15 +178,23 @@ export async function getRequestDetails(filter = {}) {
   };
 }
 
-export async function getDistinctProviders() {
+export async function getDistinctProviders(user = null) {
   const db = await getAdapter();
-  const rows = db.all(`SELECT DISTINCT provider FROM requestDetails WHERE provider IS NOT NULL ORDER BY provider ASC`);
+  const scope = await getUsageAccessScope(user);
+  const conds = ["provider IS NOT NULL"];
+  const params = [];
+  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null });
+  const rows = db.all(`SELECT DISTINCT provider FROM requestDetails WHERE ${conds.join(" AND ")} ORDER BY provider ASC`, params);
   return rows.map((r) => r.provider);
 }
 
-export async function getRequestDetailById(id) {
+export async function getRequestDetailById(id, user = null) {
   const db = await getAdapter();
-  const row = db.get(`SELECT data FROM requestDetails WHERE id = ?`, [id]);
+  const scope = await getUsageAccessScope(user);
+  const conds = ["id = ?"];
+  const params = [id];
+  appendUsageAccessClause(conds, params, scope, { apiKeyColumn: null });
+  const row = db.get(`SELECT data FROM requestDetails WHERE ${conds.join(" AND ")}`, params);
   return row ? parseJson(row.data, null) : null;
 }
 

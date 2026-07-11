@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { appendUsageAccessClause, getUsageAccessScope } from "./usageAccessScope.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -193,11 +194,14 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
   scheduleStatsEvent("pending");
 }
 
-export async function getActiveRequests() {
+export async function getActiveRequests(user = null) {
   const activeRequests = [];
   const connectionMap = await getConnectionMapCached();
+  const scope = await getUsageAccessScope(user);
+  const allowedConnectionIds = new Set(scope.connectionIds);
 
   for (const [connectionId, models] of Object.entries(pendingRequests.byAccount)) {
+    if (!scope.isAdmin && !allowedConnectionIds.has(connectionId)) continue;
     for (const [modelKey, count] of Object.entries(models)) {
       if (count > 0) {
         const accountName = connectionMap[connectionId] || `Account ${connectionId.slice(0, 8)}...`;
@@ -214,6 +218,7 @@ export async function getActiveRequests() {
   await ensureRingInitialized();
   const seen = new Set();
   const recentRequests = [...recentRing.items]
+    .filter((entry) => scope.isAdmin || allowedConnectionIds.has(entry.connectionId) || scope.apiKeys.includes(entry.apiKey))
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((e) => {
       const t = e.tokens || {};
@@ -343,7 +348,148 @@ function loadDaysInRange(adapter, maxDays) {
   return adapter.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ?`, [cutoffKey]);
 }
 
-export async function getUsageStats(period = "all") {
+function createEmptyUsageStats() {
+  return {
+    totalRequests: 0,
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    totalCachedTokens: 0,
+    totalCost: 0,
+    byProvider: {},
+    byModel: {},
+    byAccount: {},
+    byApiKey: {},
+    byEndpoint: {},
+    last10Minutes: Array.from({ length: 10 }, () => ({ requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 })),
+    pending: { byModel: {}, byAccount: {} },
+    activeRequests: [],
+    recentRequests: [],
+    errorProvider: "",
+  };
+}
+
+function getUsagePeriodCutoff(period) {
+  if (period === "today") {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    return startOfDay.toISOString();
+  }
+  if (period === "24h") return new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
+  const days = { "7d": 7, "30d": 30, "60d": 60 }[period];
+  if (!days) return null;
+  const startOfRange = new Date();
+  startOfRange.setHours(0, 0, 0, 0);
+  startOfRange.setDate(startOfRange.getDate() - days + 1);
+  return startOfRange.toISOString();
+}
+
+async function getScopedUsageStats(period, user, scope) {
+  const db = await getAdapter();
+  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
+    import("./connectionsRepo.js"),
+    import("./apiKeysRepo.js"),
+    import("./nodesRepo.js"),
+  ]);
+  const [connections, apiKeys, providerNodes] = await Promise.all([
+    getProviderConnections({ ownerId: user.id }),
+    getApiKeys(),
+    getProviderNodes(),
+  ]);
+  const connectionMap = Object.fromEntries(connections.map((connection) => [connection.id, connection.name || connection.email || connection.id]));
+  const apiKeyMap = Object.fromEntries(apiKeys.map((key) => [key.key, key]));
+  const providerNodeNameMap = Object.fromEntries(providerNodes.filter((node) => node.id && node.name).map((node) => [node.id, node.name]));
+  const stats = createEmptyUsageStats();
+  const conds = [];
+  const params = [];
+  const cutoff = getUsagePeriodCutoff(period);
+  if (cutoff) { conds.push("timestamp >= ?"); params.push(cutoff); }
+  appendUsageAccessClause(conds, params, scope);
+  const rows = db.all(
+    `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens FROM usageHistory WHERE ${conds.join(" AND ")} ORDER BY id DESC`,
+    params,
+  );
+  const currentMinuteStart = Math.floor(Date.now() / 60000) * 60000;
+  const minuteBuckets = new Map(stats.last10Minutes.map((bucket, index) => [currentMinuteStart - (9 - index) * 60000, bucket]));
+
+  for (const row of rows) {
+    const tokens = parseJson(row.tokens, {}) || {};
+    const promptTokens = row.promptTokens || tokens.prompt_tokens || tokens.input_tokens || 0;
+    const completionTokens = row.completionTokens || tokens.completion_tokens || tokens.output_tokens || 0;
+    const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
+    const cost = row.cost || 0;
+    const provider = row.provider || "unknown";
+    const providerDisplayName = providerNodeNameMap[provider] || provider;
+
+    stats.totalRequests++;
+    stats.totalPromptTokens += promptTokens;
+    stats.totalCompletionTokens += completionTokens;
+    stats.totalCachedTokens += cachedTokens;
+    stats.totalCost += cost;
+    addToCounter(stats.byProvider, provider, { promptTokens, completionTokens, cachedTokens, cost });
+
+    const modelKey = `${row.model} (${provider})`;
+    addToCounter(stats.byModel, modelKey, { promptTokens, completionTokens, cachedTokens, cost, meta: { rawModel: row.model, provider: providerDisplayName, lastUsed: row.timestamp } });
+    if (new Date(row.timestamp) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = row.timestamp;
+
+    if (row.connectionId && connectionMap[row.connectionId]) {
+      const accountName = connectionMap[row.connectionId];
+      const accountKey = `${row.model} (${provider} - ${accountName})`;
+      addToCounter(stats.byAccount, accountKey, { promptTokens, completionTokens, cachedTokens, cost, meta: { rawModel: row.model, provider: providerDisplayName, connectionId: row.connectionId, accountName, lastUsed: row.timestamp } });
+      if (new Date(row.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = row.timestamp;
+    }
+
+    // A request may be visible through an owned connection even when its API
+    // key belongs to another account. Do not expose that key's name or mask.
+    if (!row.apiKey || scope.apiKeys.includes(row.apiKey)) {
+      const keyInfo = row.apiKey ? apiKeyMap[row.apiKey] : null;
+      const apiKeyMasked = maskApiKey(row.apiKey);
+      const apiKeyKey = row.apiKey ? `${apiKeyMasked}|${row.model}|${provider}` : "local-no-key";
+      addToCounter(stats.byApiKey, apiKeyKey, { promptTokens, completionTokens, cachedTokens, cost, meta: { rawModel: row.model, provider: providerDisplayName, apiKeyMasked, keyName: keyInfo?.name || apiKeyMasked || "Local (No API Key)", apiKeyKey: apiKeyMasked || "local-no-key", lastUsed: row.timestamp } });
+      if (new Date(row.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = row.timestamp;
+    }
+
+    const endpoint = row.endpoint || "Unknown";
+    const endpointKey = `${endpoint}|${row.model}|${provider}`;
+    addToCounter(stats.byEndpoint, endpointKey, { promptTokens, completionTokens, cachedTokens, cost, meta: { endpoint, rawModel: row.model, provider: providerDisplayName, lastUsed: row.timestamp } });
+    if (new Date(row.timestamp) > new Date(stats.byEndpoint[endpointKey].lastUsed)) stats.byEndpoint[endpointKey].lastUsed = row.timestamp;
+
+    const minuteBucket = minuteBuckets.get(Math.floor(new Date(row.timestamp).getTime() / 60000) * 60000);
+    if (minuteBucket) {
+      minuteBucket.requests++;
+      minuteBucket.promptTokens += promptTokens;
+      minuteBucket.completionTokens += completionTokens;
+      minuteBucket.cost += cost;
+    }
+  }
+
+  const seen = new Set();
+  stats.recentRequests = rows.map((row) => {
+    const tokens = parseJson(row.tokens, {}) || {};
+    return { timestamp: row.timestamp, model: row.model, provider: row.provider || "", promptTokens: row.promptTokens || tokens.prompt_tokens || tokens.input_tokens || 0, completionTokens: row.completionTokens || tokens.completion_tokens || tokens.output_tokens || 0, cachedTokens: tokens.cached_tokens || tokens.cache_read_input_tokens || 0, status: row.status || "ok" };
+  }).filter((entry) => {
+    if (!entry.promptTokens && !entry.completionTokens) return false;
+    const key = `${entry.model}|${entry.provider}|${entry.promptTokens}|${entry.completionTokens}|${entry.timestamp?.slice(0, 16) || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 20);
+
+  const active = await getActiveRequests(user);
+  stats.activeRequests = active.activeRequests;
+  stats.errorProvider = active.errorProvider;
+  for (const connectionId of scope.connectionIds) {
+    if (!pendingRequests.byAccount[connectionId]) continue;
+    stats.pending.byAccount[connectionId] = { ...pendingRequests.byAccount[connectionId] };
+    for (const [model, count] of Object.entries(pendingRequests.byAccount[connectionId])) {
+      stats.pending.byModel[model] = (stats.pending.byModel[model] || 0) + count;
+    }
+  }
+  return stats;
+}
+
+export async function getUsageStats(period = "all", user = null) {
+  const scope = await getUsageAccessScope(user);
+  if (!scope.isAdmin) return getScopedUsageStats(period, user, scope);
   const db = await getAdapter();
 
   const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
@@ -658,8 +804,45 @@ export async function getUsageStats(period = "all") {
   return stats;
 }
 
-export async function getChartData(period = "7d") {
+function buildChartDataFromRows(rows, period) {
+  const now = Date.now();
+  const isHourly = period === "today" || period === "24h";
+  const bucketCount = isHourly ? 24 : period === "7d" ? 7 : period === "30d" ? 30 : 60;
+  const bucketMs = isHourly ? 3600000 : 86400000;
+  const startTime = period === "today"
+    ? new Date(new Date().setHours(0, 0, 0, 0)).getTime()
+    : isHourly ? now - bucketCount * bucketMs : new Date(new Date().setHours(0, 0, 0, 0) - (bucketCount - 1) * bucketMs).getTime();
+  const labelFn = isHourly
+    ? (timestamp) => new Date(timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
+    : (timestamp) => new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const buckets = Array.from({ length: bucketCount }, (_, index) => ({ label: labelFn(startTime + index * bucketMs), tokens: 0, cost: 0 }));
+
+  for (const row of rows) {
+    const timestamp = new Date(row.timestamp).getTime();
+    if (timestamp < startTime || timestamp > now) continue;
+    const index = Math.min(Math.floor((timestamp - startTime) / bucketMs), bucketCount - 1);
+    if (index < 0 || index >= bucketCount) continue;
+    buckets[index].tokens += (row.promptTokens || 0) + (row.completionTokens || 0);
+    buckets[index].cost += row.cost || 0;
+  }
+  return buckets;
+}
+
+export async function getChartData(period = "7d", user = null) {
   const db = await getAdapter();
+  const scope = await getUsageAccessScope(user);
+  if (!scope.isAdmin) {
+    const conds = [];
+    const params = [];
+    const cutoff = getUsagePeriodCutoff(period);
+    if (cutoff) { conds.push("timestamp >= ?"); params.push(cutoff); }
+    appendUsageAccessClause(conds, params, scope);
+    const rows = db.all(
+      `SELECT timestamp, promptTokens, completionTokens, cost FROM usageHistory WHERE ${conds.join(" AND ")}`,
+      params,
+    );
+    return buildChartDataFromRows(rows, period);
+  }
   const now = Date.now();
 
   if (period === "today") {
@@ -739,12 +922,17 @@ function formatLogDate(date = new Date()) {
 // No-op: request log is now derived from usageHistory table on read.
 export async function appendRequestLog() {}
 
-export async function getRecentLogs(limit = 200) {
+export async function getRecentLogs(limit = 200, user = null) {
   try {
     const db = await getAdapter();
+    const scope = await getUsageAccessScope(user);
+    const conds = [];
+    const params = [];
+    appendUsageAccessClause(conds, params, scope);
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const rows = db.all(
-      `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`,
-      [limit],
+      `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ${where} ORDER BY id DESC LIMIT ?`,
+      [...params, limit],
     );
     if (!rows.length) return [];
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 
 /**
  * GET /api/usage/request-details
@@ -7,6 +8,7 @@ import { getRequestDetails } from "@/lib/usageDb";
  */
 export async function GET(request) {
   try {
+    const user = await requireUsageDashboardUser();
     const { searchParams } = new URL(request.url);
     
     const pageRaw = parseInt(searchParams.get("page"));
@@ -46,10 +48,11 @@ export async function GET(request) {
     if (startDate) filter.startDate = startDate;
     if (endDate) filter.endDate = endDate;
     
-    const result = await getRequestDetails(filter);
+    const result = await getRequestDetails(filter, user);
     
     return NextResponse.json(result);
   } catch (error) {
+    if (error?.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(
       { error: "Failed to fetch request details" },

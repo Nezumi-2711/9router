@@ -5,6 +5,7 @@ import { getProviderConnectionById } from "@/lib/localDb";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "../route.js";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
 
@@ -47,8 +48,8 @@ function getResponseForConsumeResult(result, redeemRequestId) {
   }, { status: result.status >= 400 && result.status < 500 ? result.status : 502 });
 }
 
-async function getCodexConnection(connectionId) {
-  const connection = await getProviderConnectionById(connectionId);
+async function getCodexConnection(connectionId, user) {
+  const connection = await getProviderConnectionById(connectionId, user.role === "admin" ? null : user.id);
   if (!connection) {
     return { response: Response.json({ error: "Connection not found" }, { status: 404 }) };
   }
@@ -89,7 +90,8 @@ export async function GET(_request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
-    const resolved = await getCodexConnection(connectionId);
+    const user = await requireUsageDashboardUser();
+    const resolved = await getCodexConnection(connectionId, user);
     if (resolved.response) return resolved.response;
     ({ connection } = resolved);
     const { isOAuth, proxyOptions } = resolved;
@@ -112,6 +114,7 @@ export async function GET(_request, { params }) {
 
     return Response.json(result);
   } catch (error) {
+    if (error?.message === "Unauthorized") return Response.json({ error: "Unauthorized" }, { status: 401 });
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });
@@ -122,7 +125,8 @@ export async function POST(request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
-    const resolved = await getCodexConnection(connectionId);
+    const user = await requireUsageDashboardUser();
+    const resolved = await getCodexConnection(connectionId, user);
     if (resolved.response) return resolved.response;
     ({ connection } = resolved);
     const { isOAuth, proxyOptions } = resolved;
@@ -149,6 +153,7 @@ export async function POST(request, { params }) {
 
     return getResponseForConsumeResult(consumeResult, redeemRequestId);
   } catch (error) {
+    if (error?.message === "Unauthorized") return Response.json({ error: "Unauthorized" }, { status: 401 });
     const provider = connection?.provider ?? "unknown";
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });

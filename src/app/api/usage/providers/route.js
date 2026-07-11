@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDistinctProviders } from "@/lib/requestDetailsDb";
 import { getProviderNodes } from "@/lib/localDb";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 
 /**
  * GET /api/usage/providers
@@ -9,9 +10,10 @@ import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
  */
 export async function GET() {
   try {
+    const user = await requireUsageDashboardUser();
     // Query DISTINCT provider column directly — avoids parsing every row's
     // full JSON blob (can be hundreds of MB), which previously caused OOM.
-    const providerIds = await getDistinctProviders();
+    const providerIds = await getDistinctProviders(user);
 
     const providerNodes = await getProviderNodes();
     const nodeMap = {};
@@ -32,6 +34,7 @@ export async function GET() {
 
     return NextResponse.json({ providers });
   } catch (error) {
+    if (error?.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     console.error("[API] Failed to get providers:", error);
     return NextResponse.json(
       { error: "Failed to fetch providers" },

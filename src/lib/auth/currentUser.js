@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { getDashboardAuthSession } from "./dashboardSession.js";
-import { getUserById, verifyUserPassword } from "@/lib/db";
+import { getSettings, getUserById, verifyUserPassword } from "@/lib/db";
 
 export async function getCurrentDashboardUser() {
   const cookieStore = await cookies();
@@ -20,6 +20,20 @@ export async function requireCurrentDashboardUser() {
   const user = await getCurrentDashboardUser();
   if (!user) throw new Error("Unauthorized");
   return user;
+}
+
+/**
+ * Resolve the user for dashboard data that is also available in the explicit
+ * single-user (`requireLogin=false`) deployment mode. That mode has no account
+ * boundary, so it intentionally uses the system-wide administrator scope.
+ */
+export async function requireUsageDashboardUser() {
+  const user = await getCurrentDashboardUser();
+  if (user) return user;
+
+  const settings = await getSettings();
+  if (settings?.requireLogin === false) return { id: null, username: "local", role: "admin" };
+  throw new Error("Unauthorized");
 }
 
 export async function requireAdminUser() {

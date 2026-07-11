@@ -1,8 +1,16 @@
 import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  let user;
+  try {
+    user = await requireUsageDashboardUser();
+  } catch (error) {
+    if (error?.message === "Unauthorized") return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Failed to authorize usage stream" }, { status: 500 });
+  }
   const encoder = new TextEncoder();
   const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
 
@@ -14,12 +22,12 @@ export async function GET() {
         try {
           // Push lightweight update immediately so UI reflects changes fast
           if (state.cachedStats) {
-            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
+            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests(user);
             const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
           }
           // Then do full recalc and update cache
-          const stats = await getUsageStats();
+          const stats = await getUsageStats("all", user);
           state.cachedStats = stats;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
@@ -34,7 +42,7 @@ export async function GET() {
       state.sendPending = async () => {
         if (state.closed || !state.cachedStats) return;
         try {
-          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
+          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests(user);
           const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
