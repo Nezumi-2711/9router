@@ -46,7 +46,11 @@ const ALWAYS_PROTECTED = [
 
 // User administration is never exposed to normal users, even if dashboard login
 // is disabled for local single-user deployments.
-const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel"];
+const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/combos"];
+
+// Combo definitions affect routing and fallback behavior, so only administrators
+// may view or change them.
+const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/combos"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
@@ -240,6 +244,11 @@ export async function proxy(request) {
 
   // Protect all dashboard routes
   if (pathname.startsWith("/dashboard")) {
+    if (ADMIN_ONLY_DASHBOARD_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      if (await isAdmin(request)) return NextResponse.next();
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+
     let requireLogin = true;
     let tunnelDashboardAccess = true;
 

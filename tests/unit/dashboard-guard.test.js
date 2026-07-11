@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
     body,
   })),
   getSettings: vi.fn(),
+  getUserById: vi.fn(),
   validateApiKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
+  getDashboardAuthSession: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
 }));
 
@@ -22,6 +24,7 @@ vi.mock("next/server", () => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getUserById: mocks.getUserById,
   validateApiKey: mocks.validateApiKey,
 }));
 
@@ -30,17 +33,18 @@ vi.mock("@/shared/utils/machineId", () => ({
 }));
 
 vi.mock("@/lib/auth/dashboardSession", () => ({
+  getDashboardAuthSession: mocks.getDashboardAuthSession,
   verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
 }));
 
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
-function request(pathname, headers = {}) {
+function request(pathname, headers = {}, authToken) {
   const normalizedHeaders = new Headers(headers);
   return {
     nextUrl: { pathname, searchParams: new URL(`http://localhost${pathname}`).searchParams },
     headers: normalizedHeaders,
-    cookies: { get: vi.fn(() => undefined) },
+    cookies: { get: vi.fn(() => authToken ? { value: authToken } : undefined) },
     url: `http://localhost${pathname}`,
   };
 }
@@ -49,8 +53,10 @@ describe("dashboard guard public LLM API access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getUserById.mockResolvedValue(null);
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.getDashboardAuthSession.mockResolvedValue(null);
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
@@ -192,8 +198,10 @@ describe("dashboard guard local-only access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getUserById.mockResolvedValue(null);
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.getDashboardAuthSession.mockResolvedValue(null);
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
@@ -255,6 +263,41 @@ describe("dashboard guard local-only access", () => {
     }));
 
     expect(response).toBe(mocks.nextResponse);
+  });
+});
+
+describe("dashboard guard combo administration access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "user" });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.getDashboardAuthSession.mockResolvedValue({ userId: "user-1" });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+  });
+
+  it("rejects normal users from every combos API operation", async () => {
+    for (const pathname of ["/api/combos", "/api/combos/combo-1"]) {
+      const response = await proxy(request(pathname, { host: "localhost:20128" }, "user-token"));
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe("Administrator access required");
+    }
+  });
+
+  it("redirects normal users away from the combos dashboard page", async () => {
+    const response = await proxy(request("/dashboard/combos", { host: "localhost:20128" }, "user-token"));
+
+    expect(response.status).toBe(307);
+    expect(response.url).toBe("http://localhost/dashboard");
+  });
+
+  it("allows administrators to access the combos page and API", async () => {
+    mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "admin" });
+
+    expect(await proxy(request("/dashboard/combos", { host: "localhost:20128" }, "admin-token"))).toBe(mocks.nextResponse);
+    expect(await proxy(request("/api/combos", { host: "localhost:20128" }, "admin-token"))).toBe(mocks.nextResponse);
   });
 });
 
