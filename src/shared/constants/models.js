@@ -32,9 +32,20 @@ export function isValidModel(aliasOrId, modelId) {
   return models.some(m => m.id === modelId);
 }
 
-// Legacy AI_MODELS for backward compatibility
+// Legacy AI_MODELS for backward compatibility. A model can be declared under
+// multiple service kinds (for example, Gemini chat and speech-to-text), but
+// this flat catalog has no kind field. Keep its provider/model identity unique.
+const seenModelIds = new Set();
+
 export const AI_MODELS = Object.entries(MODELS).flatMap(([alias, models]) =>
-  models.map(m => ({ provider: alias, model: m.id, name: m.name }))
+  models
+    .filter((model) => {
+      const modelKey = `${alias}/${model.id}`;
+      if (seenModelIds.has(modelKey)) return false;
+      seenModelIds.add(modelKey);
+      return true;
+    })
+    .map((model) => ({ provider: alias, model: model.id, name: model.name }))
 );
 
 export const getModelKind = (m, fallback = null) => m?.kind || m?.type || fallback;

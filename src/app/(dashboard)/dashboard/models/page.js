@@ -21,8 +21,14 @@ function groupModelsByProvider(models) {
       groups[key] = {
         provider: model.provider,
         models: [],
+        modelIds: new Set(),
       };
     }
+
+    // The API normally supplies unique models. Ignore a duplicate defensively
+    // so a malformed response cannot produce duplicate React keys.
+    if (groups[key].modelIds.has(model.fullModel)) return groups;
+    groups[key].modelIds.add(model.fullModel);
     groups[key].models.push(model);
     return groups;
   }, {});
