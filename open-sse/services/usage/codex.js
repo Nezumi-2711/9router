@@ -80,17 +80,26 @@ function getCodexReviewRateLimit(data) {
   }) || null;
 }
 
-export async function getCodexUsage(accessToken, proxyOptions = null) {
+export async function getCodexUsage(accessToken, proxyOptions = null, providerSpecificData = null) {
   try {
+    const accountId = getCodexAccountId(providerSpecificData);
+    const headers = {
+      "Authorization": `Bearer ${accessToken}`,
+      "Accept": "application/json",
+      "OpenAI-Beta": "codex-1",
+      "originator": "codex_cli_rs",
+    };
+    if (accountId) headers["ChatGPT-Account-ID"] = accountId;
+
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/json",
-      },
+      headers,
     }, proxyOptions);
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return { message: `Codex authentication failed (${response.status}). Please re-authorize the connection.` };
+      }
       return { message: `Codex connected. Usage API temporarily unavailable (${response.status}).` };
     }
 
