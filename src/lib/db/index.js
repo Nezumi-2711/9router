@@ -7,6 +7,12 @@ export {
   getSettings, updateSettings, isCloudEnabled, getCloudUrl, exportSettings,
 } from "./repos/settingsRepo.js";
 
+// Users
+export {
+  getUsers, getUserById, getUserByUsername, createUser, updateUser, deleteUser,
+  countActiveAdmins, verifyUserCredentials, verifyUserPassword, resetAdminPassword,
+} from "./repos/usersRepo.js";
+
 // Provider connections
 export {
   getProviderConnections, getProviderConnectionById,
@@ -74,6 +80,7 @@ export async function exportDb() {
 
   const out = {
     settings: await exportSettings(),
+    users: db.all(`SELECT id, username, password, role, isActive, createdAt, updatedAt FROM users`).map((r) => ({ ...r, isActive: r.isActive === 1 || r.isActive === true })),
     providerConnections: db.all(`SELECT * FROM providerConnections`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, provider: r.provider, authType: r.authType, name: r.name, email: r.email, priority: r.priority, isActive: r.isActive === 1, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
@@ -97,11 +104,23 @@ export async function importDb(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+  if (Array.isArray(payload.users)) {
+    const validUsers = payload.users.filter(
+      (user) => user?.id && user?.username && user?.password && ["admin", "user"].includes(user.role)
+    );
+    if (validUsers.length !== payload.users.length) throw new Error("Invalid users data in database payload");
+    if (!validUsers.some((user) => user.role === "admin" && user.isActive !== false)) {
+      throw new Error("Database import requires at least one active administrator");
+    }
+  }
   const db = await getAdapter();
 
   db.transaction(() => {
     // Wipe all tables (keep _meta)
     db.run(`DELETE FROM settings`);
+    // Old backups predate multi-user authentication. Preserve the local
+    // administrator unless the payload explicitly carries a users array.
+    if (Array.isArray(payload.users)) db.run(`DELETE FROM users`);
     db.run(`DELETE FROM providerConnections`);
     db.run(`DELETE FROM providerNodes`);
     db.run(`DELETE FROM proxyPools`);
@@ -112,6 +131,16 @@ export async function importDb(payload) {
     // Settings
     if (payload.settings) {
       db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(payload.settings)]);
+    }
+
+    if (Array.isArray(payload.users)) {
+      for (const user of payload.users) {
+        if (!user?.id || !user?.username || !user?.password || !["admin", "user"].includes(user.role)) continue;
+        db.run(
+          `INSERT OR REPLACE INTO users(id, username, password, role, isActive, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+          [user.id, user.username, user.password, user.role, user.isActive === false ? 0 : 1, user.createdAt || new Date().toISOString(), user.updatedAt || new Date().toISOString()]
+        );
+      }
     }
 
     for (const c of payload.providerConnections || []) {

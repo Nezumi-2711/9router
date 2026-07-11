@@ -3,7 +3,8 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { runQuotaAutoPingTick } from "@/shared/services/quotaAutoPing";
-import bcrypt from "bcryptjs";
+import { requireCurrentDashboardUser } from "@/lib/auth/currentUser";
+import { updateUser, verifyUserPassword } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,28 +46,20 @@ export async function PATCH(request) {
 
     // If updating password, hash it
     if (body.newPassword) {
-      const settings = await getSettings();
-      const currentHash = settings.password;
-
-      // Verify current password if it exists
-      if (currentHash) {
-        if (!body.currentPassword) {
-          return NextResponse.json({ error: "Current password required" }, { status: 400 });
-        }
-        const isValid = await bcrypt.compare(body.currentPassword, currentHash);
-        if (!isValid) {
-          return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-        }
-      } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "123456"
-        if (body.currentPassword && body.currentPassword !== "123456") {
-           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-        }
+      let user;
+      try {
+        user = await requireCurrentDashboardUser();
+      } catch {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      const salt = await bcrypt.genSalt(10);
-      body.password = await bcrypt.hash(body.newPassword, salt);
+      if (!body.currentPassword) {
+        return NextResponse.json({ error: "Current password required" }, { status: 400 });
+      }
+      if (!(await verifyUserPassword(user.id, body.currentPassword))) {
+        return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
+      }
+      await updateUser(user.id, { password: body.newPassword });
       delete body.newPassword;
       delete body.currentPassword;
     }

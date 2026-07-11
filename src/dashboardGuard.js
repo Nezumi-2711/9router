@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSettings, validateApiKey } from "@/lib/localDb";
+import { getSettings, getUserById, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { getDashboardAuthSession, verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -43,6 +43,10 @@ const ALWAYS_PROTECTED = [
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
 ];
+
+// User administration is never exposed to normal users, even if dashboard login
+// is disabled for local single-user deployments.
+const ADMIN_ONLY_PATHS = ["/api/users"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
@@ -148,7 +152,25 @@ async function canAccessLocalOnlyRoute(request) {
 
 async function hasValidToken(request) {
   const token = request.cookies.get("auth_token")?.value;
-  return await verifyDashboardAuthToken(token);
+  if (!(await verifyDashboardAuthToken(token))) return false;
+  const session = await getDashboardAuthSession(token);
+  // Legacy/OIDC sessions do not have a local user record yet. Preserve their
+  // existing behavior; password sessions must reflect account deactivation.
+  if (!session?.userId) return true;
+  const user = await getUserById(String(session.userId));
+  return !!user?.isActive;
+}
+
+async function getAuthenticatedSession(request) {
+  const token = request.cookies.get("auth_token")?.value;
+  return getDashboardAuthSession(token);
+}
+
+async function isAdmin(request) {
+  const session = await getAuthenticatedSession(request);
+  if (!session?.userId) return false;
+  const user = await getUserById(String(session.userId));
+  return user?.isActive === true && user.role === "admin";
 }
 
 // Read settings directly from DB to avoid self-fetch deadlock in proxy
@@ -178,6 +200,7 @@ export const __test__ = {
   extractApiKey,
   canAccessPublicLlmApi,
   canAccessLocalOnlyRoute,
+  isAdmin,
 };
 
 export async function proxy(request) {
@@ -200,6 +223,11 @@ export async function proxy(request) {
   if (isPublicLlmApi(pathname)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
+  }
+
+  if (ADMIN_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    if (await hasValidCliToken(request) || await isAdmin(request)) return NextResponse.next();
+    return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.

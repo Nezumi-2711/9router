@@ -13,7 +13,10 @@ export async function GET() {
     const authMode = settings.authMode || "password";
     const oidcName = String(session?.oidcName || "").trim();
     const oidcEmail = String(session?.oidcEmail || "").trim();
-    const displayName = oidcName || oidcEmail || (session?.oidc ? "OIDC user" : "Password user");
+    const userId = String(session?.userId || "").trim();
+    const username = String(session?.username || "").trim();
+    const role = session?.role === "admin" ? "admin" : "user";
+    const displayName = username || oidcName || oidcEmail || (session?.oidc ? "OIDC user" : "Password user");
     const loginMethod = session?.oidc ? "OIDC" : "Password";
 
     return NextResponse.json({
@@ -21,9 +24,12 @@ export async function GET() {
       authMode,
       oidcConfigured: isOidcConfigured(settings),
       oidcLoginLabel: (settings.oidcLoginLabel || "Sign in with OIDC").trim() || "Sign in with OIDC",
-      hasPassword: !!settings.password,
+      hasPassword: true,
       displayName,
       loginMethod,
+      userId: userId || null,
+      username: username || null,
+      role: session ? role : null,
       oidcName: oidcName || null,
       oidcEmail: oidcEmail || null,
       oidcLogin: !!session?.oidc,
@@ -37,6 +43,9 @@ export async function GET() {
       hasPassword: false,
       displayName: "Password user",
       loginMethod: "Password",
+      userId: null,
+      username: null,
+      role: null,
       oidcName: null,
       oidcEmail: null,
       oidcLogin: false,

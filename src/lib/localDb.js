@@ -2,6 +2,8 @@
 // Kept for backward compatibility with existing imports.
 export {
   getSettings, updateSettings, isCloudEnabled, getCloudUrl,
+  getUsers, getUserById, getUserByUsername, createUser, updateUser, deleteUser,
+  countActiveAdmins, verifyUserCredentials, verifyUserPassword, resetAdminPassword,
   getProviderConnections, getProviderConnectionById,
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,

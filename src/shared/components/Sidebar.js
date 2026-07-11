@@ -8,6 +8,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import useUserStore from "@/store/userStore";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 import NineRemotePromoModal from "./NineRemotePromoModal";
@@ -49,6 +50,8 @@ export default function Sidebar({ onClose }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [shutdownCountdown, setShutdownCountdown] = useState(0);
   const [enableTranslator, setEnableTranslator] = useState(false);
+  const user = useUserStore((state) => state.user);
+  const fetchCurrentUser = useUserStore((state) => state.fetchCurrentUser);
   const { copied, copy } = useCopyToClipboard(2000);
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
@@ -59,6 +62,10 @@ export default function Sidebar({ onClose }) {
       .then(data => { if (data.enableTranslator) setEnableTranslator(true); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!user) fetchCurrentUser();
+  }, [fetchCurrentUser, user]);
 
   // Lazy check for new npm version on mount
   useEffect(() => {
@@ -262,6 +269,22 @@ export default function Sidebar({ onClose }) {
                 <span className="text-[13px] font-medium">{item.label}</span>
               </Link>
             ))}
+
+            {user?.role === "admin" ? (
+              <Link
+                href="/dashboard/users"
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  isActive("/dashboard/users")
+                    ? "bg-primary/10 text-primary"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                )}
+              >
+                <span className="material-symbols-outlined text-[18px]">group</span>
+                <span className="text-[13px] font-medium">Users</span>
+              </Link>
+            ) : null}
 
             {/* Debug items (inside System section, before Settings) */}
             {debugItems.map((item) => {
