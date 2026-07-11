@@ -9,6 +9,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
+import { getDisabledModelResponse } from "../services/disabledModels.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -43,6 +44,10 @@ export async function handleStt(request) {
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+
+  const disabledModelResponse = await getDisabledModelResponse(provider, model);
+  if (disabledModelResponse) return disabledModelResponse;
+
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   // noAuth providers

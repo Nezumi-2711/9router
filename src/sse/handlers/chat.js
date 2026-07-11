@@ -22,6 +22,7 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { getDisabledModelResponse } from "../services/disabledModels.js";
 
 /**
  * Handle chat completion request
@@ -184,6 +185,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  const disabledModelResponse = await getDisabledModelResponse(provider, model);
+  if (disabledModelResponse) return disabledModelResponse;
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 

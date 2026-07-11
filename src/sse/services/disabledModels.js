@@ -1,0 +1,36 @@
+import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { getProviderAlias } from "@/shared/constants/providers";
+import { errorResponse } from "open-sse/utils/error.js";
+import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+
+/**
+ * Return an error response when a resolved provider/model pair has been
+ * disabled by an administrator. The check uses both the provider's persisted
+ * alias and ID to preserve compatibility with existing disabled-model data.
+ *
+ * A storage read failure blocks execution rather than risking an accidental
+ * bypass of an administrator's disabled-model policy.
+ */
+export async function getDisabledModelResponse(provider, model) {
+  try {
+    const disabledModels = await getDisabledModels();
+    const providerAlias = getProviderAlias(provider) || provider;
+    const disabledIds = new Set([
+      ...(disabledModels[providerAlias] || []),
+      ...(disabledModels[provider] || []),
+    ]);
+
+    if (!disabledIds.has(model)) return null;
+
+    return errorResponse(
+      HTTP_STATUS.NOT_FOUND,
+      `Model ${provider}/${model} is disabled by an administrator`,
+    );
+  } catch (error) {
+    console.log("Error checking disabled model status:", error);
+    return errorResponse(
+      HTTP_STATUS.SERVER_ERROR,
+      "Unable to verify whether the requested model is enabled",
+    );
+  }
+}

@@ -50,7 +50,7 @@ const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/combos"];
 
 // Combo definitions affect routing and fallback behavior, so only administrators
 // may view or change them.
-const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/combos"];
+const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/combos", "/dashboard/models"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
