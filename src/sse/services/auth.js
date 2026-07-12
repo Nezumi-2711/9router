@@ -14,7 +14,7 @@ let selectionMutex = Promise.resolve();
  * @param {string} provider - Provider name
  * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
  * @param {string|null} model - Model name for per-model rate limit filtering
- * @param {{ ownerId?: string|null }} options - API-key owner scope for credentials
+ * @param {{ ownerId?: string|null }} options - API-key owner for usage attribution; credential selection is system-wide
  */
 export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
   // Normalize to Set for consistent handling
@@ -22,7 +22,6 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     ? excludeConnectionIds
     : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
   const preferredConnectionId = options?.preferredConnectionId || null;
-  const ownerId = options?.ownerId;
   // Acquire mutex to prevent race conditions
   const currentMutex = selectionMutex;
   let resolveMutex;
@@ -61,9 +60,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       };
     }
 
-    const connectionFilter = { provider: providerId, isActive: true };
-    if (ownerId !== undefined) connectionFilter.ownerId = ownerId;
-    const connections = await getProviderConnections(connectionFilter);
+    // Provider credentials are a system-wide pool. API-key ownership is used
+    // for attribution only, so every user can route through credentials added
+    // by any other user or an administrator.
+    const connections = await getProviderConnections({ provider: providerId, isActive: true });
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {
