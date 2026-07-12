@@ -1,16 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
-import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
-import {
-  ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
-  HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
-  CopilotToolCard, ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
-  JcodeToolCard,
-} from "../components";
+import { ConfigGeneratorCard, DefaultToolCard } from "../components";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
@@ -18,7 +12,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const tool = CLI_TOOLS[toolId];
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modelMappings, setModelMappings] = useState({});
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [tunnelEnabled, setTunnelEnabled] = useState(false);
   const [tunnelPublicUrl, setTunnelPublicUrl] = useState("");
@@ -67,31 +60,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   const getActiveProviders = () => connections.filter(c => c.isActive !== false);
 
-  const getAllAvailableModels = () => {
-    const activeProviders = getActiveProviders();
-    const models = [];
-    const seenModels = new Set();
-    activeProviders.forEach(conn => {
-      const alias = PROVIDER_ID_TO_ALIAS[conn.provider] || conn.provider;
-      const providerModels = getModelsByProviderId(conn.provider);
-      providerModels.forEach(m => {
-        const modelValue = `${alias}/${m.id}`;
-        if (!seenModels.has(modelValue)) {
-          seenModels.add(modelValue);
-          models.push({ value: modelValue, label: `${alias}/${m.id}`, provider: conn.provider, alias, connectionName: conn.name, modelId: m.id });
-        }
-      });
-    });
-    return models;
-  };
-
-  const handleModelMappingChange = useCallback((tId, alias, target) => {
-    setModelMappings(prev => {
-      if (prev[tId]?.[alias] === target) return prev;
-      return { ...prev, [tId]: { ...prev[tId], [alias]: target } };
-    });
-  }, []);
-
   const getBaseUrl = () => {
     if (tunnelEnabled && tunnelPublicUrl) return tunnelPublicUrl;
     if (cloudEnabled && CLOUD_URL) return CLOUD_URL;
@@ -100,48 +68,21 @@ export default function ToolDetailClient({ toolId, machineId }) {
   };
 
   const renderToolCard = () => {
-    const availableModels = getAllAvailableModels();
-    const hasActiveProviders = availableModels.length > 0;
     const commonProps = {
       tool,
-      isExpanded: true,
-      onToggle: () => {},
+      toolId,
       baseUrl: getBaseUrl(),
       apiKeys,
       tunnelEnabled,
       tunnelPublicUrl,
       tailscaleEnabled,
       tailscaleUrl,
+      activeProviders: getActiveProviders(),
+      cloudEnabled,
     };
 
-    switch (toolId) {
-      case "claude":
-        return <ClaudeToolCard {...commonProps} activeProviders={getActiveProviders()} modelMappings={modelMappings[toolId] || {}} onModelMappingChange={(a, t) => handleModelMappingChange(toolId, a, t)} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "codex":
-        return <CodexToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "opencode":
-        return <OpenCodeToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "cowork":
-        return <CoworkToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} cloudUrl={CLOUD_URL} tunnelEnabled={tunnelEnabled} tunnelPublicUrl={tunnelPublicUrl} tailscaleEnabled={tailscaleEnabled} tailscaleUrl={tailscaleUrl} />;
-      case "droid":
-        return <DroidToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "openclaw":
-        return <OpenClawToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "hermes":
-        return <HermesToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "copilot":
-        return <CopilotToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "cline":
-        return <ClineToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "kilo":
-        return <KiloToolCard {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} />;
-      case "deepseek-tui":
-        return <DeepSeekTuiToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      case "jcode":
-        return <JcodeToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
-      default:
-        return <DefaultToolCard toolId={toolId} {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} tunnelEnabled={tunnelEnabled} />;
-    }
+    if (tool.configType === "guide") return <DefaultToolCard toolId={toolId} {...commonProps} />;
+    return <ConfigGeneratorCard {...commonProps} />;
   };
 
   // Guard removed/unknown tools (e.g. disabled Cowork) to avoid crash on direct URL.

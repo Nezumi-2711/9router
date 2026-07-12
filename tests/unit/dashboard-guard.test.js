@@ -224,14 +224,14 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("requires an administrator for CLI Tools", async () => {
+  it("requires authentication for CLI Tools", async () => {
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
     }));
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Administrator access required");
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
   });
 
   it("rejects local-only route from a tunnel host", async () => {
@@ -261,7 +261,7 @@ describe("dashboard guard local-only access", () => {
   });
 });
 
-describe("dashboard guard CLI Tools administration access", () => {
+describe("dashboard guard CLI Tools access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({});
@@ -272,14 +272,13 @@ describe("dashboard guard CLI Tools administration access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(true);
   });
 
-  it("rejects normal users from host-level CLI Tools operations", async () => {
+  it("allows local authenticated users to use CLI Tools", async () => {
     const response = await proxy(request("/api/cli-tools/claude-settings", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
     }, "user-token"));
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Administrator access required");
+    expect(response).toBe(mocks.nextResponse);
   });
 
   it("rejects remote CLI Tools access even with an administrator session", async () => {

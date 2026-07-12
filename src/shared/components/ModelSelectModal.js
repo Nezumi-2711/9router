@@ -32,6 +32,7 @@ export default function ModelSelectModal({
   kindFilter = null,
   addedModelValues = [],
   closeOnSelect = true,
+  availableModels = null,
 }) {
   // Filter activeProviders by serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
   const filteredActiveProviders = useMemo(() => {
@@ -118,6 +119,36 @@ export default function ModelSelectModal({
   // Group models by provider with priority order
   const groupedModels = useMemo(() => {
     const groups = {};
+
+    // Consumers that need the exact catalog shown on the Models page supply its
+    // /api/models/connected result. This avoids recreating a separate, partial
+    // catalog from client-side provider constants, aliases, and custom models.
+    if (Array.isArray(availableModels)) {
+      availableModels.forEach((model) => {
+        const providerId = model.providerAlias || model.provider?.alias || model.provider?.id;
+        if (!providerId) return;
+
+        if (!groups[providerId]) {
+          groups[providerId] = {
+            name: model.provider?.name || providerId,
+            alias: model.providerAlias || model.provider?.alias || providerId,
+            color: model.provider?.color || "#666",
+            models: [],
+          };
+        }
+
+        groups[providerId].models.push({
+          id: model.model,
+          name: model.name || model.alias || model.model,
+          value: model.fullModel,
+          alias: model.alias,
+          caps: model.caps,
+          isCustom: model.isCustom,
+        });
+      });
+
+      return groups;
+    }
 
     // Kinds where the provider IS the model (no per-model selection needed)
     const PROVIDER_AS_MODEL_KINDS = new Set(["webSearch", "webFetch"]);
@@ -349,15 +380,15 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders]);
+  }, [availableModels, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
-    if (kindFilter) return [];
+    if (kindFilter || availableModels) return [];
     if (!searchQuery.trim()) return combos;
     const query = searchQuery.toLowerCase();
     return combos.filter(c => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+  }, [combos, searchQuery, kindFilter, availableModels]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
@@ -578,4 +609,15 @@ ModelSelectModal.propTypes = {
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
   closeOnSelect: PropTypes.bool,
+  availableModels: PropTypes.arrayOf(PropTypes.shape({
+    fullModel: PropTypes.string.isRequired,
+    model: PropTypes.string.isRequired,
+    providerAlias: PropTypes.string,
+    provider: PropTypes.shape({
+      id: PropTypes.string,
+      alias: PropTypes.string,
+      name: PropTypes.string,
+      color: PropTypes.string,
+    }),
+  })),
 };

@@ -44,15 +44,12 @@ const ALWAYS_PROTECTED = [
 ];
 
 // User administration is never exposed to normal users, even if dashboard login
-// is disabled for local single-user deployments. CLI Tools directly read and
-// mutate the account running 9Router's local CLI configuration, so they are
-// host administration rather than per-user dashboard preferences.
+// is disabled for local single-user deployments.
 const ADMIN_ONLY_PATHS = [
   "/api/users",
   "/api/tunnel",
   "/api/headroom",
   "/api/pxpipe",
-  "/api/cli-tools",
   "/api/media-providers",
   "/api/proxy-pools",
   "/api/translator/console-logs",
@@ -63,7 +60,6 @@ const ADMIN_ONLY_PATHS = [
 const ADMIN_ONLY_DASHBOARD_PATHS = [
   "/dashboard/token-saver",
   "/dashboard/pxpipe",
-  "/dashboard/cli-tools",
   "/dashboard/media-providers",
   "/dashboard/proxy-pools",
   "/dashboard/console-log",
@@ -84,7 +80,6 @@ const PROTECTED_API_PATHS = [
   "/api/media-providers",
   "/api/pricing",
   "/api/tags",
-  "/api/cli-tools",
   "/api/mcp",
   "/api/translator",
   "/api/tunnel",
@@ -223,15 +218,15 @@ export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
   // CLI Tools access the server process's home directory and, in the MITM
-  // case, can change privileged system networking. Do not allow a shared CLI
-  // bearer token to become a remote host-administration credential: only a
-  // local, authenticated administrator may use these endpoints.
+  // case, can change privileged system networking. Keep them available only
+  // to authenticated dashboard users on the local machine; never allow the
+  // shared CLI bearer token to become a remote host-administration credential.
   if (pathname === "/api/cli-tools" || pathname.startsWith("/api/cli-tools/")) {
     if (!isLocalRequest(request)) {
       return NextResponse.json({ error: "CLI Tools are available only from the local machine" }, { status: 403 });
     }
-    if (!(await isAdmin(request))) {
-      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    if (!(await isAuthenticated(request))) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
 
