@@ -42,6 +42,20 @@ describe("getDisabledModelResponse", () => {
     expect(response.status).toBe(404);
   });
 
+  it("blocks thinking variants when their base model is disabled", async () => {
+    getDisabledModels.mockResolvedValue({ codex: ["gpt-5.6-sol"] });
+
+    const response = await getDisabledModelResponse("codex", "gpt-5.6-sol(high)");
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "model_not_found",
+        message: "Model codex/gpt-5.6-sol(high) is disabled by an administrator",
+      },
+    });
+  });
+
   it("fails closed when disabled-model storage cannot be read", async () => {
     getDisabledModels.mockRejectedValue(new Error("database unavailable"));
 

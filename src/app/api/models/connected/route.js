@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, getProviderConnections } from "@/models";
 import { disableModels, enableModels, getDisabledModels } from "@/lib/disabledModelsDb";
-import { requireAdminUser } from "@/lib/auth/currentUser";
+import { requireAdminUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
 import { AI_MODELS } from "@/shared/constants/models";
 import { AI_PROVIDERS, getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
@@ -47,7 +47,7 @@ function getForbiddenResponse(error) {
 // GET /api/models/connected - List models from providers with a usable active connection.
 export async function GET() {
   try {
-    await requireAdminUser();
+    const user = await requireUsageDashboardUser();
 
     const [connections, disabledModels, modelAliases] = await Promise.all([
       getProviderConnections(),
@@ -78,7 +78,6 @@ export async function GET() {
           fullModel: `${model.provider}/${model.model}`,
           alias: modelAliases[`${model.provider}/${model.model}`] || model.model,
           disabled: disabled.includes(model.model),
-          connectionCount: connectionCountByAlias.get(model.provider) || 0,
           caps: {
             vision: caps.vision,
             search: caps.search,
@@ -86,6 +85,7 @@ export async function GET() {
           },
         };
       })
+      .filter((model) => user.role === "admin" || !model.disabled)
       .sort((a, b) => (
         a.provider.name.localeCompare(b.provider.name)
         || a.name.localeCompare(b.name)

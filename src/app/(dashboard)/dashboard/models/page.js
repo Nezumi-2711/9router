@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
@@ -11,6 +10,7 @@ import {
   Toggle,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
+import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useUserStore from "@/store/userStore";
 import { useNotificationStore } from "@/store/notificationStore";
 
@@ -18,15 +18,9 @@ function groupModelsByProvider(models) {
   return models.reduce((groups, model) => {
     const key = model.providerAlias;
     if (!groups[key]) {
-      groups[key] = {
-        provider: model.provider,
-        models: [],
-        modelIds: new Set(),
-      };
+      groups[key] = { provider: model.provider, models: [], modelIds: new Set() };
     }
 
-    // The API normally supplies unique models. Ignore a duplicate defensively
-    // so a malformed response cannot produce duplicate React keys.
     if (groups[key].modelIds.has(model.fullModel)) return groups;
     groups[key].modelIds.add(model.fullModel);
     groups[key].models.push(model);
@@ -34,17 +28,16 @@ function groupModelsByProvider(models) {
   }, {});
 }
 
-function ProviderModelsCard({ group, onSetModelsDisabled, pendingIds }) {
+function ProviderModelsCard({ group, canManage, onSetModelDisabled, onSetModelsDisabled, pendingIds }) {
   const [expanded, setExpanded] = useState(true);
+  const { copied, copy } = useCopyToClipboard();
+  const isUpdatingGroup = group.models.some((model) => pendingIds.has(model.fullModel));
   const enabledCount = group.models.filter((model) => !model.disabled).length;
   const disabledCount = group.models.length - enabledCount;
-  const isUpdatingGroup = group.models.some((model) => pendingIds.has(model.fullModel));
 
   const setAllModelsDisabled = (disabled) => {
-    const modelIds = group.models
-      .filter((model) => model.disabled !== disabled)
-      .map((model) => model.model);
-    if (modelIds.length > 0) onSetModelsDisabled(group.provider.alias, modelIds, disabled);
+    const modelsToUpdate = group.models.filter((model) => model.disabled !== disabled);
+    if (modelsToUpdate.length > 0) onSetModelsDisabled(group.provider.alias, modelsToUpdate, disabled);
   };
 
   return (
@@ -70,75 +63,84 @@ function ProviderModelsCard({ group, onSetModelsDisabled, pendingIds }) {
             />
           </div>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate font-semibold text-text-main">{group.provider.name}</h2>
-              <Badge variant="success" size="sm" dot>
-                {group.models[0].connectionCount} connection{group.models[0].connectionCount === 1 ? "" : "s"}
-              </Badge>
-            </div>
+            <h2 className="truncate font-semibold text-text-main">{group.provider.name}</h2>
             <p className="mt-0.5 text-xs text-text-muted">
-              {enabledCount} enabled · {disabledCount} disabled · {group.models.length} models
+              {group.models.length} available model{group.models.length === 1 ? "" : "s"}
             </p>
           </div>
           <span className={`material-symbols-outlined ml-auto text-[18px] text-text-muted transition-transform ${expanded ? "rotate-180" : ""}`}>
             expand_more
           </span>
         </button>
-
-        <div className="flex shrink-0 gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            icon="check_circle"
-            disabled={enabledCount === group.models.length || isUpdatingGroup}
-            onClick={() => setAllModelsDisabled(false)}
-          >
-            Enable all
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            icon="pause_circle"
-            disabled={disabledCount === group.models.length || isUpdatingGroup}
-            onClick={() => setAllModelsDisabled(true)}
-          >
-            Disable all
-          </Button>
-        </div>
+        {canManage ? (
+          <div className="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="check_circle"
+              disabled={enabledCount === group.models.length || isUpdatingGroup}
+              onClick={() => setAllModelsDisabled(false)}
+            >
+              Enable all
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="pause_circle"
+              disabled={disabledCount === group.models.length || isUpdatingGroup}
+              onClick={() => setAllModelsDisabled(true)}
+            >
+              Disable all
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {expanded ? (
-        <div className="border-t border-border">
+        <div className="grid grid-cols-1 gap-3 border-t border-border bg-surface-2/30 p-3 sm:grid-cols-2 xl:grid-cols-3">
           {group.models.map((model) => {
             const isPending = pendingIds.has(model.fullModel);
             return (
-              <div
+              <article
                 key={model.fullModel}
-                className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                className={`flex min-w-0 flex-col gap-4 rounded-xl border bg-surface p-4 transition-colors ${model.disabled ? "border-border-subtle opacity-60" : "border-border hover:border-primary/30"}`}
               >
-                <Toggle
-                  size="sm"
-                  checked={!model.disabled}
-                  disabled={isPending}
-                  onChange={(enabled) => onSetModelsDisabled(group.provider.alias, [model.model], !enabled)}
-                  className="shrink-0"
-                />
                 <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`truncate text-sm font-medium ${model.disabled ? "text-text-muted line-through" : "text-text-main"}`}>
-                      {model.name || model.alias}
-                    </span>
-                    {model.alias !== model.model ? (
-                      <Badge variant="default" size="sm">{model.alias}</Badge>
-                    ) : null}
+                  <h3 className="truncate text-sm font-semibold text-text-main" title={model.name || model.alias}>
+                    {model.name || model.alias}
+                  </h3>
+                  <div className="mt-1 flex min-w-0 items-center gap-1">
+                    <p className="min-w-0 flex-1 truncate font-mono text-xs text-text-muted" title={model.model}>{model.model}</p>
+                    <button
+                      type="button"
+                      onClick={() => copy(model.model, model.fullModel)}
+                      className="flex size-6 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Copy model ID ${model.model}`}
+                      title={copied === model.fullModel ? "Copied" : "Copy model ID"}
+                    >
+                      <span className="material-symbols-outlined text-[15px]">
+                        {copied === model.fullModel ? "check" : "content_copy"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex min-h-5 items-center justify-between gap-3 border-t border-border pt-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    {model.alias !== model.model ? <Badge variant="default" size="sm">{model.alias}</Badge> : null}
                     <CapacityBadges caps={model.caps} />
                   </div>
-                  <p className="mt-0.5 truncate font-mono text-xs text-text-muted">{model.model}</p>
+                  {canManage ? (
+                    <Toggle
+                      size="sm"
+                      checked={!model.disabled}
+                      disabled={isPending}
+                      onChange={(enabled) => onSetModelDisabled(group.provider.alias, model, !enabled)}
+                      className="shrink-0"
+                    />
+                  ) : null}
                 </div>
-                <Badge variant={model.disabled ? "default" : "success"} size="sm">
-                  {model.disabled ? "Disabled" : "Enabled"}
-                </Badge>
-              </div>
+              </article>
             );
           })}
         </div>
@@ -148,7 +150,6 @@ function ProviderModelsCard({ group, onSetModelsDisabled, pendingIds }) {
 }
 
 export default function ModelsPage() {
-  const router = useRouter();
   const user = useUserStore((state) => state.user);
   const fetchCurrentUser = useUserStore((state) => state.fetchCurrentUser);
   const notify = useNotificationStore();
@@ -163,12 +164,6 @@ export default function ModelsPage() {
   }, [fetchCurrentUser, user]);
 
   useEffect(() => {
-    if (user && user.role !== "admin") router.replace("/dashboard");
-  }, [router, user]);
-
-  useEffect(() => {
-    if (user?.role !== "admin") return;
-
     const loadModels = async () => {
       setLoading(true);
       setError(null);
@@ -185,7 +180,7 @@ export default function ModelsPage() {
     };
 
     loadModels();
-  }, [user?.role]);
+  }, []);
 
   const filteredGroups = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -200,16 +195,18 @@ export default function ModelsPage() {
       .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
   }, [models, search]);
 
-  const setModelsDisabled = async (providerAlias, modelIds, disabled) => {
-    const matchingModels = models.filter((model) => (
-      model.provider.alias === providerAlias && modelIds.includes(model.model)
-    ));
-    const ids = matchingModels.map((model) => model.fullModel);
+  const setModelDisabled = async (providerAlias, model, disabled) => {
+    await setModelsDisabled(providerAlias, [model], disabled);
+  };
+
+  const setModelsDisabled = async (providerAlias, modelsToUpdate, disabled) => {
+    const ids = modelsToUpdate.map((model) => model.fullModel);
+    const modelIds = modelsToUpdate.map((model) => model.model);
     if (ids.length === 0) return;
 
     setPendingIds((current) => new Set([...current, ...ids]));
-    setModels((current) => current.map((model) => (
-      ids.includes(model.fullModel) ? { ...model, disabled } : model
+    setModels((current) => current.map((item) => (
+      ids.includes(item.fullModel) ? { ...item, disabled } : item
     )));
 
     try {
@@ -219,11 +216,11 @@ export default function ModelsPage() {
         body: JSON.stringify({ providerAlias, modelIds, disabled }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to update models");
+      if (!response.ok) throw new Error(data.error || "Failed to update model");
       notify.success(`${modelIds.length} model${modelIds.length === 1 ? "" : "s"} ${disabled ? "disabled" : "enabled"}.`);
     } catch (updateError) {
-      setModels((current) => current.map((model) => (
-        ids.includes(model.fullModel) ? { ...model, disabled: !disabled } : model
+      setModels((current) => current.map((item) => (
+        ids.includes(item.fullModel) ? { ...item, disabled: !disabled } : item
       )));
       notify.error(updateError.message);
     } finally {
@@ -235,9 +232,7 @@ export default function ModelsPage() {
     }
   };
 
-  if (user && user.role !== "admin") return null;
-
-  if (loading || !user) {
+  if (loading) {
     return (
       <div className="flex flex-col gap-4">
         <CardSkeleton />
@@ -245,6 +240,9 @@ export default function ModelsPage() {
       </div>
     );
   }
+
+  const providerCount = new Set(models.map((model) => model.providerAlias)).size;
+  const canManage = user?.role === "admin";
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
@@ -255,7 +253,9 @@ export default function ModelsPage() {
             <Badge variant="default" size="sm">{models.length}</Badge>
           </div>
           <p className="mt-1 text-sm text-text-muted">
-            Manage which models are available through the API for connected providers.
+            {canManage
+              ? "Select which connected-provider models are available through the API."
+              : "Browse models currently available through your connected providers."}
           </p>
         </div>
         <label className="relative block w-full sm:w-80">
@@ -268,6 +268,19 @@ export default function ModelsPage() {
           />
         </label>
       </div>
+
+      {!error && models.length > 0 ? (
+        <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border" aria-label="Model overview">
+          <div className="bg-surface px-4 py-3">
+            <p className="text-xs font-medium text-text-muted">Connected providers</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-text-main">{providerCount}</p>
+          </div>
+          <div className="bg-surface px-4 py-3">
+            <p className="text-xs font-medium text-text-muted">Available models</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-text-main">{models.length}</p>
+          </div>
+        </section>
+      ) : null}
 
       {error ? (
         <Card className="border-red-500/30 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
@@ -293,7 +306,9 @@ export default function ModelsPage() {
             <ProviderModelsCard
               key={group.provider.alias}
               group={group}
+              canManage={canManage}
               pendingIds={pendingIds}
+              onSetModelDisabled={setModelDisabled}
               onSetModelsDisabled={setModelsDisabled}
             />
           ))}
