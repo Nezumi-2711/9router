@@ -45,12 +45,14 @@ const ALWAYS_PROTECTED = [
 ];
 
 // User administration is never exposed to normal users, even if dashboard login
-// is disabled for local single-user deployments.
-const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/headroom", "/api/pxpipe"];
+// is disabled for local single-user deployments. CLI Tools directly read and
+// mutate the account running 9Router's local CLI configuration, so they are
+// host administration rather than per-user dashboard preferences.
+const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/headroom", "/api/pxpipe", "/api/cli-tools"];
 
 // Dashboard paths requiring an administrator. Combo access is handled by its
 // owner-scoped API routes and is available to authenticated users.
-const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/token-saver", "/dashboard/pxpipe"];
+const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/token-saver", "/dashboard/pxpipe", "/dashboard/cli-tools"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
@@ -75,8 +77,6 @@ const PROTECTED_API_PATHS = [
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
 const LOCAL_ONLY_PATHS = [
-  "/api/cli-tools/cowork-settings",
-  "/api/cli-tools/antigravity-mitm",
   "/api/mcp/",
   "/api/tunnel/tailscale-install",
   "/api/tunnel/tailscale-enable",
@@ -209,6 +209,19 @@ export const __test__ = {
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
+
+  // CLI Tools access the server process's home directory and, in the MITM
+  // case, can change privileged system networking. Do not allow a shared CLI
+  // bearer token to become a remote host-administration credential: only a
+  // local, authenticated administrator may use these endpoints.
+  if (pathname === "/api/cli-tools" || pathname.startsWith("/api/cli-tools/")) {
+    if (!isLocalRequest(request)) {
+      return NextResponse.json({ error: "CLI Tools are available only from the local machine" }, { status: 403 });
+    }
+    if (!(await isAdmin(request))) {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    }
+  }
 
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {

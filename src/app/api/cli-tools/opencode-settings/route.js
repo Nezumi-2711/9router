@@ -6,6 +6,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/lib/security/redactSecrets";
 
 const execAsync = promisify(exec);
 
@@ -72,7 +73,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactSecrets(config),
       has9Router: has9RouterConfig(config),
       configPath: getConfigPath(),
         opencode: {

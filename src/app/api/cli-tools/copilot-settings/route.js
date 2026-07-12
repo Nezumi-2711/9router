@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { redactSecrets } from "@/lib/security/redactSecrets";
 
 // Resolve chatLanguageModels.json path per OS
 const getConfigPath = () => {
@@ -48,7 +49,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactSecrets(config),
       has9Router: has9RouterConfig(config),
       configPath: getConfigPath(),
       currentModel: entry?.models?.[0]?.id || null,

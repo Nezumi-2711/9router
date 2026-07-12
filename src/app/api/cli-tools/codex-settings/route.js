@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
+import { redactSecretsInText } from "@/lib/security/redactSecrets";
 
 const execAsync = promisify(exec);
 
@@ -96,7 +97,7 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      config,
+      config: redactSecretsInText(config),
       has9Router: has9RouterConfig(config),
       configPath: getCodexConfigPath(),
     });

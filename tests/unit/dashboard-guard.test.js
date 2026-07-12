@@ -224,7 +224,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("allows local-only route on loopback when requireLogin=false", async () => {
+  it("requires an administrator for CLI Tools even when dashboard login is disabled", async () => {
     mocks.getSettings.mockResolvedValue({ requireLogin: false });
 
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
@@ -232,7 +232,8 @@ describe("dashboard guard local-only access", () => {
       origin: "http://localhost:20128",
     }));
 
-    expect(response).toBe(mocks.nextResponse);
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Administrator access required");
   });
 
   it("rejects local-only route from tunnel host even when requireLogin=false", async () => {
@@ -266,7 +267,7 @@ describe("dashboard guard local-only access", () => {
   });
 });
 
-describe("dashboard guard combo administration access", () => {
+describe("dashboard guard CLI Tools administration access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireLogin: true });
@@ -277,28 +278,38 @@ describe("dashboard guard combo administration access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(true);
   });
 
-  it("rejects normal users from every combos API operation", async () => {
-    for (const pathname of ["/api/combos", "/api/combos/combo-1"]) {
-      const response = await proxy(request(pathname, { host: "localhost:20128" }, "user-token"));
+  it("rejects normal users from host-level CLI Tools operations", async () => {
+    const response = await proxy(request("/api/cli-tools/claude-settings", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }, "user-token"));
 
-      expect(response.status).toBe(403);
-      expect(response.body.error).toBe("Administrator access required");
-    }
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Administrator access required");
   });
 
-  it("redirects normal users away from the combos dashboard page", async () => {
-    const response = await proxy(request("/dashboard/combos", { host: "localhost:20128" }, "user-token"));
-
-    expect(response.status).toBe(307);
-    expect(response.url).toBe("http://localhost/dashboard");
-  });
-
-  it("allows administrators to access the combos page and API", async () => {
+  it("rejects remote CLI Tools access even with an administrator session", async () => {
     mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "admin" });
 
-    expect(await proxy(request("/dashboard/combos", { host: "localhost:20128" }, "admin-token"))).toBe(mocks.nextResponse);
-    expect(await proxy(request("/api/combos", { host: "localhost:20128" }, "admin-token"))).toBe(mocks.nextResponse);
+    const response = await proxy(request("/api/cli-tools/claude-settings", {
+      host: "router.example.com",
+    }, "admin-token"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("CLI Tools are available only from the local machine");
   });
+
+  it("allows a local administrator to use CLI Tools", async () => {
+    mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "admin" });
+
+    const response = await proxy(request("/api/cli-tools/claude-settings", {
+      host: "localhost:20128",
+      origin: "http://localhost:20128",
+    }, "admin-token"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
 });
 
 describe("dashboard guard token saver administration access", () => {
