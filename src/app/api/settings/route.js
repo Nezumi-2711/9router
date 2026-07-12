@@ -16,17 +16,13 @@ const SETTINGS_RESPONSE_HEADERS = {
 // Secrets must never be mass-assigned from request body (CWE-915)
 const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
 
-// These capabilities are intentionally not configurable through the dashboard.
-// Keep the server-side policy here so callers cannot bypass the hidden UI.
-const RESTRICTED_SETTING_KEYS = [
-  "requireLogin",
+const USER_RESTRICTED_SETTING_KEYS = [
   "authMode",
   "oidcIssuerUrl",
   "oidcClientId",
   "oidcClientSecret",
   "oidcScopes",
   "oidcLoginLabel",
-  "oidcConfigured",
   "fallbackStrategy",
   "stickyRoundRobinLimit",
   "comboStrategy",
@@ -60,9 +56,9 @@ export async function GET() {
   try {
     const settings = await getSettings();
     const { password, oidcClientSecret, ...safeSettings } = settings;
-    for (const key of RESTRICTED_SETTING_KEYS) delete safeSettings[key];
     const user = await requireUsageDashboardUser();
     if (user.role !== "admin") {
+      for (const key of USER_RESTRICTED_SETTING_KEYS) delete safeSettings[key];
       const ownedComboIds = new Set((await getCombos(user.id)).map((combo) => combo.id));
       safeSettings.comboStrategies = Object.fromEntries(
         Object.entries(safeSettings.comboStrategies || {}).filter(([comboId]) => ownedComboIds.has(comboId))
@@ -88,8 +84,16 @@ export async function PATCH(request) {
   try {
     const body = await request.json();
 
-    if (RESTRICTED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
-      return NextResponse.json({ error: "This setting is not available" }, { status: 403 });
+    if (USER_RESTRICTED_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+      let user;
+      try {
+        user = await requireUsageDashboardUser();
+      } catch {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      if (user.role !== "admin") {
+        return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+      }
     }
 
     if (
@@ -168,7 +172,11 @@ export async function PATCH(request) {
     }
 
     const { password, oidcClientSecret, ...safeSettings } = settings;
-    for (const key of RESTRICTED_SETTING_KEYS) delete safeSettings[key];
+    const user = await requireUsageDashboardUser();
+    if (user.role !== "admin") {
+      for (const key of USER_RESTRICTED_SETTING_KEYS) delete safeSettings[key];
+    }
+    safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error updating settings:", error);

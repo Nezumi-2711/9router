@@ -13,6 +13,13 @@ export async function getUsageAccessScope(user) {
     return { isAdmin: true, userId: null, connectionIds: [], apiKeys: [] };
   }
 
+  // Repository calls without a user are trusted server-side operations (for
+  // example logging, cleanup, and DB-level callers). HTTP routes must resolve
+  // and pass the dashboard user explicitly before querying these repositories.
+  if (!user) {
+    return { isAdmin: true, userId: null, connectionIds: [], apiKeys: [] };
+  }
+
   if (!user?.id) {
     return { isAdmin: false, userId: null, connectionIds: [], apiKeys: [] };
   }

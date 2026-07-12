@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Input } from "@/shared/components";
+import { Card, Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -23,6 +23,9 @@ function getLocaleFromCookie() {
 export default function ProfilePage() {
   const { theme, setTheme } = useTheme();
   const user = useUserStore((state) => state.user);
+  // Only standard user accounts are restricted. Local mode has no dashboard
+  // session, so it must retain administrator-level settings controls.
+  const isAdmin = user?.role !== "user";
   const fetchCurrentUser = useUserStore((state) => state.fetchCurrentUser);
   const [locale, setLocale] = useState("en");
   const [langOpen, setLangOpen] = useState(false);
@@ -37,7 +40,18 @@ export default function ProfilePage() {
   const [dbStatus, setDbStatus] = useState({ type: "", message: "" });
   const [dbAuth, setDbAuth] = useState({ open: false, mode: "", password: "" });
   const pendingImportRef = useRef(null);
+  const [oidcForm, setOidcForm] = useState({ authMode: "password", oidcIssuerUrl: "", oidcClientId: "", oidcScopes: "openid profile email", oidcLoginLabel: "Sign in with OIDC" });
+  const [oidcClientSecret, setOidcClientSecret] = useState("");
+  const [oidcStatus, setOidcStatus] = useState({ type: "", message: "" });
+  const [oidcLoading, setOidcLoading] = useState(false);
+  const [oidcTestLoading, setOidcTestLoading] = useState(false);
+  const [oidcTestStatus, setOidcTestStatus] = useState({ type: "", message: "" });
+  const [oidcExpanded, setOidcExpanded] = useState(false);
   const importFileRef = useRef(null);
+  const [proxyForm, setProxyForm] = useState({ outboundProxyUrl: "", outboundNoProxy: "" });
+  const [proxyStatus, setProxyStatus] = useState({ type: "", message: "" });
+  const [proxyLoading, setProxyLoading] = useState(false);
+  const [proxyTestLoading, setProxyTestLoading] = useState(false);
 
   useEffect(() => {
     if (!user) fetchCurrentUser();
@@ -52,6 +66,8 @@ export default function ProfilePage() {
       .then((res) => res.json())
       .then((data) => {
         setSettings(data);
+        setOidcForm({ authMode: data?.authMode || "password", oidcIssuerUrl: data?.oidcIssuerUrl || "", oidcClientId: data?.oidcClientId || "", oidcScopes: data?.oidcScopes || "openid profile email", oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC" });
+        setProxyForm({ outboundProxyUrl: data?.outboundProxyUrl || "", outboundNoProxy: data?.outboundNoProxy || "" });
         setLoading(false);
       })
       .catch((err) => {
@@ -59,6 +75,55 @@ export default function ProfilePage() {
         setLoading(false);
       });
   }, []);
+
+  const updateAdminSettings = async (changes) => {
+    const res = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to update settings");
+    setSettings((previous) => ({ ...previous, ...data }));
+    return data;
+  };
+
+  const saveOidcSettings = async () => {
+    setOidcLoading(true);
+    setOidcStatus({ type: "", message: "" });
+    try {
+      const payload = { ...oidcForm, oidcIssuerUrl: oidcForm.oidcIssuerUrl.trim(), oidcClientId: oidcForm.oidcClientId.trim(), oidcScopes: oidcForm.oidcScopes.trim() || "openid profile email", oidcLoginLabel: oidcForm.oidcLoginLabel.trim() || "Sign in with OIDC" };
+      if (oidcClientSecret.trim()) payload.oidcClientSecret = oidcClientSecret.trim();
+      const data = await updateAdminSettings(payload);
+      setOidcForm((previous) => ({ ...previous, authMode: data.authMode || previous.authMode }));
+      setOidcClientSecret("");
+      setOidcStatus({ type: "success", message: "OIDC settings saved" });
+    } catch (error) { setOidcStatus({ type: "error", message: error.message }); } finally { setOidcLoading(false); }
+  };
+
+  const testOidcConnection = async () => {
+    setOidcTestLoading(true);
+    setOidcTestStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/auth/oidc/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ issuerUrl: oidcForm.oidcIssuerUrl, clientId: oidcForm.oidcClientId, scopes: oidcForm.oidcScopes }) });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "OIDC connection test failed");
+      setOidcTestStatus({ type: "success", message: "OIDC connection successful" });
+    } catch (error) { setOidcTestStatus({ type: "error", message: error.message }); } finally { setOidcTestLoading(false); }
+  };
+
+  const saveProxySettings = async (event) => {
+    event.preventDefault();
+    setProxyLoading(true);
+    try { await updateAdminSettings(proxyForm); setProxyStatus({ type: "success", message: "Proxy settings applied" }); }
+    catch (error) { setProxyStatus({ type: "error", message: error.message }); } finally { setProxyLoading(false); }
+  };
+
+  const testOutboundProxy = async () => {
+    setProxyTestLoading(true);
+    try {
+      const res = await fetch("/api/settings/proxy-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proxyUrl: proxyForm.outboundProxyUrl }) });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Proxy test failed");
+      setProxyStatus({ type: "success", message: "Proxy test successful" });
+    } catch (error) { setProxyStatus({ type: "error", message: error.message }); } finally { setProxyTestLoading(false); }
+  };
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -314,6 +379,51 @@ export default function ProfilePage() {
             <span className="text-2xl">{LOCALE_FLAGS[locale] || "🌐"}</span>
           </button>
         </Card>
+
+        {isAdmin && (
+          <>
+            <Card>
+              <button type="button" onClick={() => setOidcExpanded((value) => !value)} className="w-full flex items-center gap-3 text-left">
+                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 shrink-0"><span className="material-symbols-outlined text-[20px]">lock_open</span></div>
+                <div className="flex-1"><h3 className="text-base sm:text-lg font-semibold">OIDC Dashboard Login</h3><p className="text-xs text-text-muted">Configure OIDC single sign-on for the dashboard.</p></div>
+                <span className="material-symbols-outlined text-text-muted">{oidcExpanded ? "expand_less" : "expand_more"}</span>
+              </button>
+              {oidcExpanded && (
+                <div className="flex flex-col gap-4 mt-4 pt-4 border-t border-border/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {["password", "oidc", "both"].map((mode) => <Button key={mode} type="button" variant={oidcForm.authMode === mode ? "primary" : "outline"} onClick={() => setOidcForm((previous) => ({ ...previous, authMode: mode }))}>{mode}</Button>)}
+                  </div>
+                  <Input placeholder="Issuer URL" value={oidcForm.oidcIssuerUrl} onChange={(event) => setOidcForm((previous) => ({ ...previous, oidcIssuerUrl: event.target.value }))} />
+                  <Input placeholder="Client ID" value={oidcForm.oidcClientId} onChange={(event) => setOidcForm((previous) => ({ ...previous, oidcClientId: event.target.value }))} />
+                  <Input type="password" placeholder="Client Secret (leave blank to keep)" value={oidcClientSecret} onChange={(event) => setOidcClientSecret(event.target.value)} />
+                  <Input placeholder="Scopes" value={oidcForm.oidcScopes} onChange={(event) => setOidcForm((previous) => ({ ...previous, oidcScopes: event.target.value }))} />
+                  <Input placeholder="Login button label" value={oidcForm.oidcLoginLabel} onChange={(event) => setOidcForm((previous) => ({ ...previous, oidcLoginLabel: event.target.value }))} />
+                  <div className="flex gap-2"><Button type="button" variant="primary" loading={oidcLoading} onClick={saveOidcSettings}>Save</Button><Button type="button" variant="outline" loading={oidcTestLoading} onClick={testOidcConnection}>Test connection</Button></div>
+                  {[oidcStatus, oidcTestStatus].filter((status) => status.message).map((status, index) => <p key={index} className={`text-sm ${status.type === "error" ? "text-red-500" : "text-green-500"}`}>{status.message}</p>)}
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-3 mb-4"><div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><span className="material-symbols-outlined text-[20px]">route</span></div><h3 className="text-base sm:text-lg font-semibold">Routing Strategy</h3></div>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-4"><div><p className="font-medium">Round Robin</p><p className="text-xs text-text-muted">Cycle through accounts to distribute load.</p></div><Toggle checked={settings.fallbackStrategy === "round-robin"} onChange={() => updateAdminSettings({ fallbackStrategy: settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin" })} /></div>
+                <div className="flex items-center justify-between gap-4"><div><p className="font-medium">Combo Round Robin</p><p className="text-xs text-text-muted">Cycle through providers in combos.</p></div><Toggle checked={settings.comboStrategy === "round-robin"} onChange={() => updateAdminSettings({ comboStrategy: settings.comboStrategy === "round-robin" ? "fallback" : "round-robin" })} /></div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-3 mb-4"><div className="p-2 rounded-lg bg-purple-500/10 text-purple-500"><span className="material-symbols-outlined text-[20px]">wifi</span></div><h3 className="text-base sm:text-lg font-semibold">Network</h3></div>
+              <div className="flex items-center justify-between gap-4 mb-4"><div><p className="font-medium">Outbound Proxy</p><p className="text-xs text-text-muted">Proxy OAuth and provider outbound requests.</p></div><Toggle checked={settings.outboundProxyEnabled === true} onChange={() => updateAdminSettings({ outboundProxyEnabled: !settings.outboundProxyEnabled })} /></div>
+              {settings.outboundProxyEnabled === true && <form onSubmit={saveProxySettings} className="flex flex-col gap-3 pt-4 border-t border-border/50"><Input placeholder="Proxy URL" value={proxyForm.outboundProxyUrl} onChange={(event) => setProxyForm((previous) => ({ ...previous, outboundProxyUrl: event.target.value }))} /><Input placeholder="No Proxy" value={proxyForm.outboundNoProxy} onChange={(event) => setProxyForm((previous) => ({ ...previous, outboundNoProxy: event.target.value }))} /><div className="flex gap-2"><Button type="button" variant="outline" loading={proxyTestLoading} onClick={testOutboundProxy}>Test proxy URL</Button><Button type="submit" variant="primary" loading={proxyLoading}>Apply</Button></div>{proxyStatus.message && <p className={`text-sm ${proxyStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>{proxyStatus.message}</p>}</form>}
+            </Card>
+
+            <Card>
+              <div className="flex items-center gap-3 mb-4"><div className="p-2 rounded-lg bg-orange-500/10 text-orange-500"><span className="material-symbols-outlined text-[20px]">monitoring</span></div><h3 className="text-base sm:text-lg font-semibold">Observability</h3></div>
+              <div className="flex items-center justify-between gap-4"><div><p className="font-medium">Enable Observability</p><p className="text-xs text-text-muted">Record request details for the logs view.</p></div><Toggle checked={settings.enableObservability === true} onChange={() => updateAdminSettings({ enableObservability: !settings.enableObservability })} /></div>
+            </Card>
+          </>
+        )}
 
         {/* Password */}
         <Card>

@@ -26,7 +26,6 @@ export default function APIPageClient({ machineId, isAdmin }) {
   const [confirmState, setConfirmState] = useState(null);
 
   const [requireApiKey, setRequireApiKey] = useState(false);
-  const [requireLogin, setRequireLogin] = useState(true);
   const [hasPassword, setHasPassword] = useState(true);
  const [tunnelDashboardAccess, setTunnelDashboardAccess] = useState(false);
 
@@ -86,11 +85,9 @@ export default function APIPageClient({ machineId, isAdmin }) {
 
   const { copied, copy } = useCopyToClipboard();
 
-  // Security gate: block remote exposure while dashboard uses default password or login is off.
-  const isLoginUnsafe = !requireLogin || !hasPassword;
-  const unsafeReason = !requireLogin
-    ? "Enable \"Require login\" and set a custom password before activating the tunnel."
-    : "Change the default dashboard password before activating the tunnel.";
+  // Security gate: block remote exposure while dashboard uses the default password.
+  const isLoginUnsafe = !hasPassword;
+  const unsafeReason = "Change the default dashboard password before activating the tunnel.";
 
   // Auto-scroll install log
   useEffect(() => {
@@ -201,7 +198,6 @@ export default function APIPageClient({ machineId, isAdmin }) {
       if (settingsRes.ok) {
         const data = await settingsRes.json();
         setRequireApiKey(data.requireApiKey || false);
-        setRequireLogin(data.requireLogin !== false);
         setHasPassword(data.hasPassword || false);
         setTunnelDashboardAccess(data.tunnelDashboardAccess || false);
       }
@@ -925,15 +921,11 @@ export default function APIPageClient({ machineId, isAdmin }) {
                 action={{ label: "Enable", href: "#require-api-key" }}
               />
             )}
-            {(!requireLogin || !hasPassword) && (
+            {!hasPassword && (
               <SecurityWarning
-                message={
-                  !requireLogin
-                    ? "Require login is disabled — anyone can access your dashboard via tunnel."
-                    : "Dashboard uses the default password — change it in Profile settings."
-                }
+                message="Dashboard uses the default password — change it in Profile settings."
                 action={{
-                  label: !requireLogin ? "Enable" : "Change password",
+                  label: "Change password",
                   href: "/dashboard/profile",
                 }}
               />

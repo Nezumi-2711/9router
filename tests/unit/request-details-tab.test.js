@@ -6,6 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
+vi.mock("@/lib/auth/currentUser", () => ({
+  requireUsageDashboardUser: vi.fn(async () => ({ id: "test-admin", role: "admin" })),
+}));
+
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let db;
@@ -22,7 +26,7 @@ beforeAll(async () => {
   vi.resetModules();
   db = await import("@/lib/db/index.js");
   await db.initDb();
-  await db.updateSettings({ enableObservability2: true, observabilityBatchSize: 1 });
+  await db.updateSettings({ enableObservability: true, observabilityBatchSize: 1 });
 
   const { getAdapter } = await import("@/lib/db/driver.js");
   adapter = await getAdapter();

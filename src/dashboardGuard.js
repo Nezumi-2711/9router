@@ -33,7 +33,7 @@ const PUBLIC_API_PATHS = [
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
 const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex"];
 
-// Always require JWT token regardless of requireLogin setting
+// Always require a JWT token.
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
   "/api/settings/database",
@@ -69,7 +69,7 @@ const ADMIN_ONLY_DASHBOARD_PATHS = [
   "/dashboard/console-log",
 ];
 
-// Require auth, but allow through if requireLogin is disabled
+// Require authenticated access.
 const PROTECTED_API_PATHS = [
   "/api/settings",
   "/api/keys",
@@ -164,7 +164,7 @@ async function canAccessPublicLlmApi(request) {
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + auth (JWT or requireLogin=false)
+  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + JWT auth.
   if (isLocalRequest(request) && await isAuthenticated(request)) return true;
   return false;
 }
@@ -202,10 +202,7 @@ async function loadSettings() {
 }
 
 async function isAuthenticated(request) {
-  if (await hasValidToken(request)) return true;
-  const settings = await loadSettings();
-  if (settings && settings.requireLogin === false) return true;
-  return false;
+  return hasValidToken(request);
 }
 
 function isPublicApi(pathname) {
@@ -277,13 +274,11 @@ export async function proxy(request) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
 
-    let requireLogin = true;
     let tunnelDashboardAccess = true;
 
     try {
       const settings = await loadSettings();
       if (settings) {
-        requireLogin = settings.requireLogin !== false;
         tunnelDashboardAccess = settings.tunnelDashboardAccess === true;
 
         // Block tunnel/tailscale access if disabled (redirect to login)
@@ -297,11 +292,8 @@ export async function proxy(request) {
         }
       }
     } catch {
-      // On error, keep defaults (require login, block tunnel)
+      // On error, keep the secure default and block tunnel dashboard access.
     }
-
-    // If login not required, allow through
-    if (!requireLogin) return NextResponse.next();
 
     // Verify JWT token
     const token = request.cookies.get("auth_token")?.value;

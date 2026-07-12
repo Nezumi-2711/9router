@@ -52,7 +52,7 @@ function request(pathname, headers = {}, authToken) {
 describe("dashboard guard public LLM API access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getSettings.mockResolvedValue({});
     mocks.getUserById.mockResolvedValue(null);
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
@@ -197,7 +197,7 @@ describe("dashboard guard public LLM API access", () => {
 describe("dashboard guard local-only access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getSettings.mockResolvedValue({});
     mocks.getUserById.mockResolvedValue(null);
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
@@ -214,7 +214,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("rejects local-only route on loopback when requireLogin=true and no JWT", async () => {
+  it("rejects local-only route on loopback without a JWT", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
@@ -224,9 +224,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Local only: CLI token required");
   });
 
-  it("requires an administrator for CLI Tools even when dashboard login is disabled", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
+  it("requires an administrator for CLI Tools", async () => {
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "localhost:20128",
       origin: "http://localhost:20128",
@@ -236,9 +234,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Administrator access required");
   });
 
-  it("rejects local-only route from tunnel host even when requireLogin=false", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
+  it("rejects local-only route from a tunnel host", async () => {
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "router.example.com",
     }));
@@ -247,8 +243,6 @@ describe("dashboard guard local-only access", () => {
   });
 
   it("rejects local-only route when Origin is non-loopback (CSRF block)", async () => {
-    mocks.getSettings.mockResolvedValue({ requireLogin: false });
-
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "localhost:20128",
       origin: "http://evil.example.com",
@@ -270,7 +264,7 @@ describe("dashboard guard local-only access", () => {
 describe("dashboard guard CLI Tools administration access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getSettings.mockResolvedValue({});
     mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "user" });
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
@@ -315,7 +309,7 @@ describe("dashboard guard CLI Tools administration access", () => {
 describe("dashboard guard token saver administration access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.getSettings.mockResolvedValue({});
     mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "user" });
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.getDashboardAuthSession.mockResolvedValue({ userId: "user-1" });

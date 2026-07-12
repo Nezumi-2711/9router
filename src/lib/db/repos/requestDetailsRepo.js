@@ -6,21 +6,16 @@ const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
 const DEFAULT_FLUSH_INTERVAL_MS = 5000;
 const DEFAULT_MAX_JSON_SIZE = 5 * 1024;
-const CONFIG_CACHE_TTL_MS = 5000;
-
-let cachedConfig = null;
-let cachedConfigTs = 0;
 
 async function getObservabilityConfig() {
-  if (cachedConfig && (Date.now() - cachedConfigTs) < CONFIG_CACHE_TTL_MS) return cachedConfig;
   try {
     const { getSettings } = await import("./settingsRepo.js");
     const settings = await getSettings();
     const envEnabled = process.env.OBSERVABILITY_ENABLED !== "false";
-    const enabled = typeof settings.enableObservability2 === "boolean"
-      ? settings.enableObservability2
+    const enabled = typeof settings.enableObservability === "boolean"
+      ? settings.enableObservability
       : envEnabled;
-    cachedConfig = {
+    return {
       enabled,
       maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),
       batchSize: settings.observabilityBatchSize || parseInt(process.env.OBSERVABILITY_BATCH_SIZE || String(DEFAULT_BATCH_SIZE), 10),
@@ -28,7 +23,7 @@ async function getObservabilityConfig() {
       maxJsonSize: (settings.observabilityMaxJsonSize || parseInt(process.env.OBSERVABILITY_MAX_JSON_SIZE || "5", 10)) * 1024,
     };
   } catch {
-    cachedConfig = {
+    return {
       enabled: false,
       maxRecords: DEFAULT_MAX_RECORDS,
       batchSize: DEFAULT_BATCH_SIZE,
@@ -36,8 +31,6 @@ async function getObservabilityConfig() {
       maxJsonSize: DEFAULT_MAX_JSON_SIZE,
     };
   }
-  cachedConfigTs = Date.now();
-  return cachedConfig;
 }
 
 let writeBuffer = [];
