@@ -11,7 +11,6 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useUserStore from "@/store/userStore";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
-import NineRemotePromoModal from "./NineRemotePromoModal";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
@@ -32,19 +31,18 @@ const navItems = [
 ];
 
 const debugItems = [
-  { href: "/dashboard/console-log", label: "Console Log", icon: "terminal" },
+  { href: "/dashboard/console-log", label: "Console Log", icon: "terminal", adminOnly: true },
   { href: "/dashboard/translator", label: "Translator", icon: "translate" },
 ];
 
 const systemItems = [
-  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan" },
+  { href: "/dashboard/proxy-pools", label: "Proxy Pools", icon: "lan", adminOnly: true },
   { href: "/dashboard/skills", label: "Skills", icon: "extension" },
 ];
 
 export default function Sidebar({ onClose }) {
   const pathname = usePathname();
   const [mediaOpen, setMediaOpen] = useState(false);
-  const [showRemoteModal, setShowRemoteModal] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -196,58 +194,62 @@ export default function Sidebar({ onClose }) {
               System
             </p>
 
-            {/* Media Providers accordion */}
-            <button
-              onClick={() => setMediaOpen((v) => !v)}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
-                pathname.startsWith("/dashboard/media-providers")
-                  ? "bg-primary/10 text-primary"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span className="material-symbols-outlined text-[18px]">perm_media</span>
-              <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
-              <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
-                expand_more
-              </span>
-            </button>
-            {mediaOpen && (
-              <div className="pl-4">
-                {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
-                  <Link
-                    key={kind.id}
-                    href={`/dashboard/media-providers/${kind.id}`}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                      pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
-                        ? "bg-primary/10 text-primary"
-                        : "text-text-muted hover:bg-surface-2 hover:text-text-main"
-                    )}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
-                    <span className="text-sm">{kind.label}</span>
-                  </Link>
-                ))}
-                <Link
-                  key={COMBINED_WEB_ITEM.id}
-                  href={COMBINED_WEB_ITEM.href}
-                  onClick={onClose}
+            {/* Media providers are configuration pages, visible only to administrators. */}
+            {user?.role === "admin" && (
+              <>
+                <button
+                  onClick={() => setMediaOpen((v) => !v)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
-                    pathname.startsWith(COMBINED_WEB_ITEM.href)
+                    "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                    pathname.startsWith("/dashboard/media-providers")
                       ? "bg-primary/10 text-primary"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
-                  <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
-                  <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
-                </Link>
-              </div>
+                  <span className="material-symbols-outlined text-[18px]">perm_media</span>
+                  <span className="text-[13px] font-medium flex-1 text-left">Media Providers</span>
+                  <span className="material-symbols-outlined text-[14px] transition-transform" style={{ transform: mediaOpen ? "rotate(180deg)" : "rotate(0deg)" }}>
+                    expand_more
+                  </span>
+                </button>
+                {mediaOpen && (
+                  <div className="pl-4">
+                    {MEDIA_PROVIDER_KINDS.filter((k) => VISIBLE_MEDIA_KINDS.includes(k.id)).map((kind) => (
+                      <Link
+                        key={kind.id}
+                        href={`/dashboard/media-providers/${kind.id}`}
+                        onClick={onClose}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                          pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
+                            ? "bg-primary/10 text-primary"
+                            : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                        )}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">{kind.icon}</span>
+                        <span className="text-sm">{kind.label}</span>
+                      </Link>
+                    ))}
+                    <Link
+                      key={COMBINED_WEB_ITEM.id}
+                      href={COMBINED_WEB_ITEM.href}
+                      onClick={onClose}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                        pathname.startsWith(COMBINED_WEB_ITEM.href)
+                          ? "bg-primary/10 text-primary"
+                          : "text-text-muted hover:bg-surface-2 hover:text-text-main"
+                      )}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">{COMBINED_WEB_ITEM.icon}</span>
+                      <span className="text-sm">{COMBINED_WEB_ITEM.label}</span>
+                    </Link>
+                  </div>
+                )}
+              </>
             )}
 
-            {systemItems.map((item) => (
+            {systemItems.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -289,7 +291,8 @@ export default function Sidebar({ onClose }) {
 
             {/* Debug items (inside System section, before Settings) */}
             {debugItems.map((item) => {
-              const show = item.href !== "/dashboard/translator" || enableTranslator;
+              const show = (!item.adminOnly || user?.role === "admin") &&
+                (item.href !== "/dashboard/translator" || enableTranslator);
               return show ? (
                 <Link
                   key={item.href}
@@ -314,20 +317,6 @@ export default function Sidebar({ onClose }) {
                 </Link>
               ) : null;
             })}
-
-            {/* Remote */}
-            <button
-              onClick={() => setShowRemoteModal(true)}
-              className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group w-full",
-                "text-text-muted hover:bg-surface-2 hover:text-text-main"
-              )}
-            >
-              <span className="material-symbols-outlined text-[18px] group-hover:text-primary transition-colors">
-                computer
-              </span>
-              <span className="text-[13px] font-medium">Remote</span>
-            </button>
 
             {/* Settings */}
             <Link
@@ -354,9 +343,6 @@ export default function Sidebar({ onClose }) {
         </nav>
 
       </aside>
-
-      {/* Remote Promo Modal */}
-      <NineRemotePromoModal isOpen={showRemoteModal} onClose={() => setShowRemoteModal(false)} />
 
       {/* Update Confirmation Modal */}
       <ConfirmModal

@@ -28,7 +28,6 @@ const PUBLIC_API_PATHS = [
   "/api/auth/status",
   "/api/auth/oidc",
   "/api/version",
-  "/api/settings/require-login",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -48,11 +47,27 @@ const ALWAYS_PROTECTED = [
 // is disabled for local single-user deployments. CLI Tools directly read and
 // mutate the account running 9Router's local CLI configuration, so they are
 // host administration rather than per-user dashboard preferences.
-const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/headroom", "/api/pxpipe", "/api/cli-tools"];
+const ADMIN_ONLY_PATHS = [
+  "/api/users",
+  "/api/tunnel",
+  "/api/headroom",
+  "/api/pxpipe",
+  "/api/cli-tools",
+  "/api/media-providers",
+  "/api/proxy-pools",
+  "/api/translator/console-logs",
+];
 
 // Dashboard paths requiring an administrator. Combo access is handled by its
 // owner-scoped API routes and is available to authenticated users.
-const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/token-saver", "/dashboard/pxpipe", "/dashboard/cli-tools"];
+const ADMIN_ONLY_DASHBOARD_PATHS = [
+  "/dashboard/token-saver",
+  "/dashboard/pxpipe",
+  "/dashboard/cli-tools",
+  "/dashboard/media-providers",
+  "/dashboard/proxy-pools",
+  "/dashboard/console-log",
+];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [
