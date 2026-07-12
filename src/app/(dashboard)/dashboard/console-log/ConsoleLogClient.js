@@ -22,7 +22,13 @@ function colorLine(line) {
 export default function ConsoleLogClient() {
   const [logs, setLogs] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
   const logRef = useRef(null);
+
+  const filteredLogs = selectedUserId
+    ? logs.filter((line) => line.includes(`[USER:${selectedUserId}]`))
+    : logs;
 
   const handleClear = async () => {
     try {
@@ -62,16 +68,49 @@ export default function ConsoleLogClient() {
     return () => es.close();
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadUsers() {
+      try {
+        const response = await fetch("/api/users", { signal: controller.signal });
+        if (!response.ok) return;
+        const data = await response.json();
+        setUsers((data.users || []).filter((user) => user.isActive));
+      } catch (error) {
+        if (error.name !== "AbortError") console.error("Failed to load users:", error);
+      }
+    }
+
+    loadUsers();
+    return () => controller.abort();
+  }, []);
+
   // Auto-scroll to bottom on new logs
   useEffect(() => {
     if (!logRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [logs]);
+  }, [filteredLogs]);
 
   return (
     <div className="">
       <Card>
-        <div className="flex items-center justify-end px-4 pt-3 pb-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-3 pb-2">
+          <label className="flex items-center gap-2 text-xs text-text-muted">
+            <span>User</span>
+            <select
+              value={selectedUserId}
+              onChange={(event) => setSelectedUserId(event.target.value)}
+              className="rounded-md border border-border bg-bg-subtle px-2 py-1.5 text-xs text-text focus:border-primary focus:outline-none"
+            >
+              <option value="">All users</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.username}
+                </option>
+              ))}
+            </select>
+          </label>
           <Button size="sm" variant="outline" icon="delete" onClick={handleClear}>
             Clear
           </Button>
@@ -82,9 +121,11 @@ export default function ConsoleLogClient() {
         >
           {logs.length === 0 ? (
             <span className="text-text-muted">No console logs yet.</span>
+          ) : filteredLogs.length === 0 ? (
+            <span className="text-text-muted">No console logs for the selected user.</span>
           ) : (
             <div className="space-y-0.5">
-              {logs.map((line, i) => (
+              {filteredLogs.map((line, i) => (
                 <div key={i}>{colorLine(line)}</div>
               ))}
             </div>

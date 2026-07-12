@@ -10,6 +10,8 @@ import {
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
+import { getUserById } from "@/lib/db";
+import { runWithRequestUser, setRequestUser } from "@/lib/requestContext";
 import { getModelInfo, getCombo } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -58,6 +60,9 @@ export async function handleChat(request, clientRawRequest = null) {
   const authHeader = request.headers.get("Authorization");
   const apiKey = extractApiKey(request);
   const ownerId = await getApiKeyOwnerId(apiKey);
+  const requestUser = ownerId ? await getUserById(ownerId) : null;
+
+  return runWithRequestUser(requestUser, async () => {
   if (authHeader && apiKey) {
     const masked = log.maskKey(apiKey);
     log.debug("AUTH", `API Key: ${masked}`);
@@ -135,6 +140,7 @@ export async function handleChat(request, clientRawRequest = null) {
 
   // Single model request
   return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, ownerId);
+  });
 }
 
 /**
@@ -224,6 +230,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       log.warn("CHAT", "No more accounts available", { provider });
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+    }
+
+    // Requests without an API key inherit the selected provider connection's
+    // owner, matching usage-history attribution.
+    if (!ownerId && credentials._connection?.ownerId) {
+      const connectionOwner = await getUserById(credentials._connection.ownerId);
+      setRequestUser(connectionOwner);
     }
 
     // Account selection shown in the unified "▶" line (acc:...)

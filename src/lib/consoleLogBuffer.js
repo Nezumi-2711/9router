@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config.js";
+import { getRequestUser } from "@/lib/requestContext";
 
 const consoleLevels = ["log", "info", "warn", "error", "debug"];
 
@@ -63,12 +64,17 @@ function formatArg(arg) {
 }
 
 function appendLine(line) {
-  state.logs.push(line);
+  const requestUser = getRequestUser();
+  const attributedLine = requestUser
+    ? `[USER:${requestUser.id}] [${requestUser.username}] ${line}`
+    : line;
+
+  state.logs.push(attributedLine);
   const maxLines = CONSOLE_LOG_CONFIG.maxLines;
   if (state.logs.length > maxLines) {
     state.logs = state.logs.slice(-maxLines);
   }
-  state.pendingLines.push(line);
+  state.pendingLines.push(attributedLine);
   if (state.pendingLines.length >= MAX_BATCH_LINES) {
     if (state.flushTimer) {
       clearTimeout(state.flushTimer);
