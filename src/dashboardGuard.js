@@ -46,11 +46,11 @@ const ALWAYS_PROTECTED = [
 
 // User administration is never exposed to normal users, even if dashboard login
 // is disabled for local single-user deployments.
-const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel"];
+const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/headroom", "/api/pxpipe"];
 
 // Dashboard paths requiring an administrator. Combo access is handled by its
 // owner-scoped API routes and is available to authenticated users.
-const ADMIN_ONLY_DASHBOARD_PATHS = [];
+const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/token-saver", "/dashboard/pxpipe"];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [

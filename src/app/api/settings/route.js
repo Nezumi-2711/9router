@@ -16,6 +16,24 @@ const SETTINGS_RESPONSE_HEADERS = {
 // Secrets must never be mass-assigned from request body (CWE-915)
 const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
 
+// Token savers change gateway-wide request processing and can start or manage
+// local helper processes. They are therefore administrator-only settings.
+const TOKEN_SAVER_SETTING_KEYS = [
+  "rtkEnabled",
+  "headroomEnabled",
+  "headroomUrl",
+  "headroomCodeAware",
+  "headroomKompress",
+  "cavemanEnabled",
+  "cavemanLevel",
+  "ponytailEnabled",
+  "ponytailLevel",
+  "pxpipeEnabled",
+  "pxpipeAutoInstall",
+  "pxpipeMinChars",
+  "pxpipeTimeoutMs",
+];
+
 export async function GET() {
   try {
     const settings = await getSettings();
@@ -26,6 +44,7 @@ export async function GET() {
       safeSettings.comboStrategies = Object.fromEntries(
         Object.entries(safeSettings.comboStrategies || {}).filter(([comboId]) => ownedComboIds.has(comboId))
       );
+      for (const key of TOKEN_SAVER_SETTING_KEYS) delete safeSettings[key];
     }
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     
@@ -51,7 +70,8 @@ export async function PATCH(request) {
     if (
       Object.prototype.hasOwnProperty.call(body, "requireApiKey") ||
       Object.prototype.hasOwnProperty.call(body, "tunnelDashboardAccess") ||
-      Object.prototype.hasOwnProperty.call(body, "comboStrategies")
+      Object.prototype.hasOwnProperty.call(body, "comboStrategies") ||
+      TOKEN_SAVER_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))
     ) {
       let user;
       try {
