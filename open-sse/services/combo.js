@@ -149,17 +149,17 @@ function rotateModelsFromIndex(models, currentIndex) {
 /**
  * Get rotated model list based on strategy
  * @param {string[]} models - Array of model strings
- * @param {string} comboName - Name of the combo
+ * @param {string} comboKey - Stable combo identifier used for rotation state
  * @param {string} strategy - "fallback" or "round-robin"
  * @param {number|string} [stickyLimit=1] - Requests per combo model before switching
  * @returns {string[]} Rotated models array
  */
-export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
+export function getRotatedModels(models, comboKey, strategy, stickyLimit = 1) {
   if (!models || models.length <= 1 || strategy !== "round-robin") {
     return models;
   }
 
-  const rotationKey = comboName || "__default__";
+  const rotationKey = comboKey || "__default__";
   const normalizedStickyLimit = normalizeStickyLimit(stickyLimit);
   const existingState = comboRotationState.get(rotationKey);
   const state = typeof existingState === "number"
@@ -187,10 +187,10 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1) {
 
 /**
  * Reset in-memory rotation state when combo/settings change
- * @param {string} [comboName] - Combo name to reset; omit to clear all
+ * @param {string} [comboKey] - Stable combo identifier to reset; omit to clear all
  */
-export function resetComboRotation(comboName) {
-  if (comboName) comboRotationState.delete(comboName);
+export function resetComboRotation(comboKey) {
+  if (comboKey) comboRotationState.delete(comboKey);
   else comboRotationState.clear();
 }
 
@@ -221,14 +221,15 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {string[]} options.models - Array of model strings to try
  * @param {Function} options.handleSingleModel - Function to handle single model: (body, modelStr) => Promise<Response>
  * @param {Object} options.log - Logger object
- * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
+ * @param {string} [options.comboName] - Name of the combo (for logs)
+ * @param {string} [options.comboId] - Stable combo ID (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboId, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
   // Apply rotation strategy if enabled
-  let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
+  let rotatedModels = getRotatedModels(models, comboId || comboName, comboStrategy, comboStickyLimit);
 
   // Auto-switch: float models that satisfy the request's required capabilities to the front.
   if (autoSwitch) {

@@ -116,7 +116,12 @@ export async function getProviderConnections(filter = {}) {
   const where = [];
   const params = [];
   if (filter.provider) { where.push("provider = ?"); params.push(filter.provider); }
-  if (filter.ownerId) { where.push("ownerId = ?"); params.push(filter.ownerId); }
+  // `undefined` is an explicit administrative, unscoped query. `null` scopes
+  // to legacy/global connections rather than exposing every user's accounts.
+  if (Object.prototype.hasOwnProperty.call(filter, "ownerId")) {
+    where.push("ownerId IS ?");
+    params.push(filter.ownerId);
+  }
   if (filter.isActive !== undefined) { where.push("isActive = ?"); params.push(filter.isActive ? 1 : 0); }
   const sql = `SELECT * FROM providerConnections${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   const rows = db.all(sql, params);

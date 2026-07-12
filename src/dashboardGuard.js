@@ -46,11 +46,11 @@ const ALWAYS_PROTECTED = [
 
 // User administration is never exposed to normal users, even if dashboard login
 // is disabled for local single-user deployments.
-const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel", "/api/combos"];
+const ADMIN_ONLY_PATHS = ["/api/users", "/api/tunnel"];
 
-// Combo definitions affect routing and fallback behavior, so only administrators
-// may view or change them. The Models page is available read-only to all users.
-const ADMIN_ONLY_DASHBOARD_PATHS = ["/dashboard/combos"];
+// Dashboard paths requiring an administrator. Combo access is handled by its
+// owner-scoped API routes and is available to authenticated users.
+const ADMIN_ONLY_DASHBOARD_PATHS = [];
 
 // Require auth, but allow through if requireLogin is disabled
 const PROTECTED_API_PATHS = [

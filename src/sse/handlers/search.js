@@ -3,6 +3,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
+  getApiKeyOwnerId,
   isValidApiKey,
 } from "../services/auth.js";
 import { getSettings, getCombos } from "@/lib/localDb";
@@ -38,6 +39,7 @@ export async function handleSearch(request) {
 
   // Log API key (masked)
   const apiKey = extractApiKey(request);
+  const ownerId = await getApiKeyOwnerId(apiKey);
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
@@ -69,11 +71,12 @@ export async function handleSearch(request) {
   }
 
   // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
-  const combos = await getCombos();
-  const comboModels = getComboModelsFromData(providerInput, combos);
+  const combos = await getCombos(ownerId);
+  const combo = combos.find((entry) => entry.name === providerInput && entry.models?.length > 0);
+  const comboModels = getComboModelsFromData(providerInput, combo ? [combo] : []);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = comboStrategies[combo.id]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("SEARCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
@@ -82,6 +85,7 @@ export async function handleSearch(request) {
       handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
       log,
       comboName: providerInput,
+      comboId: combo.id,
       comboStrategy,
       comboStickyLimit
     });
@@ -149,7 +153,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, null, { ownerId });
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {

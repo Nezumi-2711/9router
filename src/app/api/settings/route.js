@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getSettings, updateSettings } from "@/lib/localDb";
+import { getSettings, getCombos, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { runQuotaAutoPingTick } from "@/shared/services/quotaAutoPing";
-import { requireCurrentDashboardUser } from "@/lib/auth/currentUser";
+import { requireCurrentDashboardUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
 import { updateUser, verifyUserPassword } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,13 @@ export async function GET() {
   try {
     const settings = await getSettings();
     const { password, oidcClientSecret, ...safeSettings } = settings;
+    const user = await requireUsageDashboardUser();
+    if (user.role !== "admin") {
+      const ownedComboIds = new Set((await getCombos(user.id)).map((combo) => combo.id));
+      safeSettings.comboStrategies = Object.fromEntries(
+        Object.entries(safeSettings.comboStrategies || {}).filter(([comboId]) => ownedComboIds.has(comboId))
+      );
+    }
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
@@ -43,7 +50,8 @@ export async function PATCH(request) {
 
     if (
       Object.prototype.hasOwnProperty.call(body, "requireApiKey") ||
-      Object.prototype.hasOwnProperty.call(body, "tunnelDashboardAccess")
+      Object.prototype.hasOwnProperty.call(body, "tunnelDashboardAccess") ||
+      Object.prototype.hasOwnProperty.call(body, "comboStrategies")
     ) {
       let user;
       try {

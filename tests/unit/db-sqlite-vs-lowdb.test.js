@@ -141,6 +141,9 @@ describe("DB SQLite layer — public API parity", () => {
     const ownerOneConnections = await sqliteDb.getProviderConnections({ ownerId: ownerOne.id });
     expect(ownerOneConnections.map((connection) => connection.id)).toContain(firstConnection.id);
     expect(ownerOneConnections.map((connection) => connection.id)).not.toContain(secondConnection.id);
+    const globalConnections = await sqliteDb.getProviderConnections({ ownerId: null });
+    expect(globalConnections.map((connection) => connection.id)).not.toContain(firstConnection.id);
+    expect(globalConnections.map((connection) => connection.id)).not.toContain(secondConnection.id);
     await expect(sqliteDb.createProviderConnection({
       provider: "owner-test-account",
       authType: "oauth",

@@ -39,6 +39,8 @@ describe("Schema migrations", () => {
     ]));
     expect(db.all(`PRAGMA table_info(providerConnections)`).map((column) => column.name)).toContain("ownerId");
     expect(db.all(`PRAGMA index_list(providerConnections)`).map((index) => index.name)).toContain("idx_pc_owner");
+    expect(db.all(`PRAGMA table_info(combos)`).map((column) => column.name)).toContain("ownerId");
+    expect(db.all(`PRAGMA index_list(combos)`).map((index) => index.name)).toContain("idx_combo_owner_name");
   });
 
   it("existing DB at older schemaVersion → re-applies pending migrations on restart", async () => {

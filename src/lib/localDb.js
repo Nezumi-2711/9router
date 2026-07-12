@@ -1,7 +1,7 @@
 // Shim → re-export from new SQLite-based DB layer (src/lib/db/)
 // Kept for backward compatibility with existing imports.
 export {
-  getSettings, updateSettings, isCloudEnabled, getCloudUrl,
+  getSettings, updateSettings, updateComboStrategy, isCloudEnabled, getCloudUrl,
   getUsers, getUserById, getUserByUsername, createUser, updateUser, deleteUser,
   countActiveAdmins, verifyUserCredentials, verifyUserPassword, resetAdminPassword,
   getProviderConnections, getProviderConnectionById,
@@ -12,7 +12,7 @@ export {
   createProviderNode, updateProviderNode, deleteProviderNode,
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
-  getApiKeys, getApiKeysByOwnerId, getApiKeyById, getApiKeyByIdAndOwnerId,
+  getApiKeys, getApiKeysByOwnerId, getApiKeyById, getApiKeyByKey, getApiKeyByIdAndOwnerId,
   createApiKey, updateApiKey, deleteApiKey, validateApiKey,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,

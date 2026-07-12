@@ -84,7 +84,7 @@ export default function ComboDetailPage() {
       setName(c.name);
       setProviders(c.models || []);
       const s = settingsRes.ok ? await settingsRes.json() : {};
-      setRoundRobin(s.comboStrategies?.[c.name]?.fallbackStrategy === "round-robin");
+      setRoundRobin(s.comboStrategies?.[c.id]?.fallbackStrategy === "round-robin");
       const allLogs = logsRes.ok ? await logsRes.json() : [];
       setLogs(allLogs.filter((l) => typeof l === "string" && l.includes(c.name)).slice(0, 50));
     } catch { /* noop */ }
@@ -150,17 +150,12 @@ export default function ComboDetailPage() {
   };
 
   const handleToggleRoundRobin = async (enabled) => {
-    setRoundRobin(enabled);
-    const settingsRes = await fetch("/api/settings", { cache: "no-store" });
-    const s = settingsRes.ok ? await settingsRes.json() : {};
-    const updated = { ...(s.comboStrategies || {}) };
-    if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };
-    else delete updated[combo.name];
-    await fetch("/api/settings", {
+    const res = await fetch(`/api/combos/${id}/strategy`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboStrategies: updated }),
+      body: JSON.stringify({ strategy: enabled ? { fallbackStrategy: "round-robin" } : {} }),
     });
+    if (res.ok) setRoundRobin(enabled);
   };
 
   const handleDelete = async () => {

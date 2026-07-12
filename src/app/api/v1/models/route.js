@@ -5,7 +5,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getApiKeyByKey, getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -189,7 +189,7 @@ function comboMatchesKinds(combo, kindFilter) {
  * Build OpenAI-format models list filtered by service kinds.
  * @param {string[]} kindFilter - List of service kinds to include (e.g. ["llm"], ["webSearch","webFetch"]).
  */
-export async function buildModelsList(kindFilter) {
+export async function buildModelsList(kindFilter, ownerId = undefined) {
   let connections = [];
   try {
     connections = await getProviderConnections();
@@ -200,7 +200,7 @@ export async function buildModelsList(kindFilter) {
 
   let combos = [];
   try {
-    combos = await getCombos();
+    combos = await getCombos(ownerId);
   } catch (e) {
     console.log("Could not fetch combos");
   }
@@ -471,13 +471,26 @@ export async function OPTIONS() {
   });
 }
 
+function extractApiKey(request) {
+  const authorization = request.headers.get("Authorization");
+  if (authorization?.startsWith("Bearer ")) return authorization.slice(7);
+  return request.headers.get("x-api-key") || request.headers.get("x-goog-api-key") || request.nextUrl.searchParams.get("key") || null;
+}
+
+export async function getApiKeyOwnerId(request) {
+  const apiKey = extractApiKey(request);
+  if (!apiKey) return undefined;
+  const record = await getApiKeyByKey(apiKey);
+  return record?.isActive ? (record.ownerId ?? null) : undefined;
+}
+
 /**
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
-export async function GET() {
+export async function GET(request) {
   try {
-    const data = await buildModelsList([LLM_KIND]);
+    const data = await buildModelsList([LLM_KIND], await getApiKeyOwnerId(request));
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

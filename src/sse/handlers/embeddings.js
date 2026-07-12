@@ -3,6 +3,7 @@ import {
   markAccountUnavailable,
   clearAccountError,
   extractApiKey,
+  getApiKeyOwnerId,
   isValidApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
@@ -36,6 +37,7 @@ export async function handleEmbeddings(request) {
 
   // Log API key (masked)
   const apiKey = extractApiKey(request);
+  const ownerId = await getApiKeyOwnerId(apiKey);
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
@@ -66,7 +68,7 @@ export async function handleEmbeddings(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
 
-  const modelInfo = await getModelInfo(modelStr);
+  const modelInfo = await getModelInfo(modelStr, ownerId);
   if (!modelInfo.provider) {
     log.warn("EMBEDDINGS", "Invalid model format", { model: modelStr });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
@@ -89,7 +91,7 @@ export async function handleEmbeddings(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { ownerId });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -27,7 +27,7 @@ export default function CombosPage() {
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchData = async () => {
+  async function fetchData() {
     try {
       const [combosRes, providersRes, settingsRes, modelsRes] = await Promise.all([
         fetch("/api/combos"),
@@ -57,7 +57,7 @@ export default function CombosPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleCreate = async (data) => {
     try {
@@ -115,26 +115,26 @@ export default function CombosPage() {
     });
   };
 
-  // Merge a per-combo strategy patch into settings.comboStrategies. Passing an empty
-  // patch (strategy back to default "fallback") drops the entry entirely.
-  const handleSetComboStrategy = async (comboName, patch) => {
+  // Update only this combo's strategy through an owner-authorized endpoint.
+  const handleSetComboStrategy = async (comboId, patch) => {
     try {
-      const updated = { ...comboStrategies };
-      const next = { ...(updated[comboName] || {}), ...patch };
+      const next = { ...(comboStrategies[comboId] || {}), ...patch };
       // Prune to keep settings clean: default fallback with no extras = no entry.
-      if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
-        delete updated[comboName];
-      } else {
-        updated[comboName] = next;
-      }
+      const strategy = !next.fallbackStrategy || next.fallbackStrategy === "fallback" ? {} : next;
 
-      await fetch("/api/settings", {
+      const res = await fetch(`/api/combos/${comboId}/strategy`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comboStrategies: updated }),
+        body: JSON.stringify({ strategy }),
       });
 
-      setComboStrategies(updated);
+      if (!res.ok) throw new Error("Failed to update combo strategy");
+      setComboStrategies((current) => {
+        const updated = { ...current };
+        if (Object.keys(strategy).length === 0) delete updated[comboId];
+        else updated[comboId] = strategy;
+        return updated;
+      });
     } catch (error) {
       console.log("Error updating combo strategy:", error);
     }
@@ -195,8 +195,8 @@ export default function CombosPage() {
               onCopy={copy}
               onEdit={() => setEditingCombo(combo)}
               onDelete={() => handleDelete(combo.id)}
-              strategy={comboStrategies[combo.name] || {}}
-              onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
+              strategy={comboStrategies[combo.id] || {}}
+              onSetStrategy={(patch) => handleSetComboStrategy(combo.id, patch)}
             />
           ))}
         </div>

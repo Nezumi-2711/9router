@@ -35,7 +35,7 @@ export async function resolveModelAlias(alias) {
 /**
  * Get full model info (parse or resolve)
  */
-export async function getModelInfo(modelStr) {
+export async function getModelInfo(modelStr, ownerId = undefined) {
   const parsed = parseModel(modelStr);
 
   if (!parsed.isAlias) {
@@ -68,7 +68,7 @@ export async function getModelInfo(modelStr) {
 
   // Check if this is a combo name before resolving as alias
   // This prevents combo names from being incorrectly routed to providers
-  const combo = await getComboByName(parsed.model);
+  const combo = await getComboByName(parsed.model, ownerId);
   if (combo) {
     // Return null provider to signal this should be handled as combo
     // The caller (handleChat) will detect this and handle it as combo
@@ -82,13 +82,22 @@ export async function getModelInfo(modelStr) {
  * Check if model is a combo and get models list
  * @returns {Promise<string[]|null>} Array of models or null if not a combo
  */
-export async function getComboModels(modelStr) {
+export async function getComboModels(modelStr, ownerId = undefined) {
   // Only check if it's not in provider/model format
   if (modelStr.includes("/")) return null;
 
-  const combo = await getComboByName(modelStr);
+  const combo = await getComboByName(modelStr, ownerId);
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }
   return null;
+}
+
+/**
+ * Resolve a complete combo record in the request owner's scope.
+ */
+export async function getCombo(modelStr, ownerId = undefined) {
+  if (modelStr.includes("/")) return null;
+  const combo = await getComboByName(modelStr, ownerId);
+  return combo?.models?.length ? combo : null;
 }

@@ -94,6 +94,28 @@ export async function updateSettings(updates) {
   return mergeWithDefaults(next);
 }
 
+/**
+ * Atomically update one combo's strategy without replacing other combos'
+ * entries in the shared settings document.
+ */
+export async function updateComboStrategy(comboId, strategy) {
+  const db = await getAdapter();
+  let next;
+  db.transaction(() => {
+    const row = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const current = row ? parseJson(row.data, {}) : {};
+    const comboStrategies = { ...(current.comboStrategies || {}) };
+    if (!strategy || Object.keys(strategy).length === 0) delete comboStrategies[comboId];
+    else comboStrategies[comboId] = strategy;
+    next = { ...current, comboStrategies };
+    db.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [stringifyJson(next)]
+    );
+  });
+  return mergeWithDefaults(next);
+}
+
 export async function isCloudEnabled() {
   const settings = await getSettings();
   return settings.cloudEnabled === true;

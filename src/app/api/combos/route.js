@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,13 @@ const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 // GET /api/combos - Get all combos
 export async function GET() {
   try {
-    const combos = await getCombos();
+    const user = await requireUsageDashboardUser();
+    const combos = await getCombos(user.role === "admin" ? undefined : user.id);
     return NextResponse.json({ combos });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.log("Error fetching combos:", error);
     return NextResponse.json({ error: "Failed to fetch combos" }, { status: 500 });
   }
@@ -20,6 +25,7 @@ export async function GET() {
 // POST /api/combos - Create new combo
 export async function POST(request) {
   try {
+    const user = await requireUsageDashboardUser();
     const body = await request.json();
     const { name, models, kind } = body;
 
@@ -33,15 +39,21 @@ export async function POST(request) {
     }
 
     // Check if name already exists
-    const existing = await getComboByName(name);
+    const existing = await getComboByName(name, user.id || null);
     if (existing) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null });
+    const combo = await createCombo({ name, ownerId: user.id || null, models: models || [], kind: kind || null });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message.includes("UNIQUE constraint failed")) {
+      return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
+    }
     console.log("Error creating combo:", error);
     return NextResponse.json({ error: "Failed to create combo" }, { status: 500 });
   }
