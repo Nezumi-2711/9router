@@ -17,8 +17,8 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "9Router - AI Infrastructure Management",
-  description: "One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.",
+  title: "9Router (Remake) - AI Infrastructure Management",
+  description: "A Nezumi remake forked from the official 9Router project. Manage AI providers through one endpoint.",
   icons: {
     icon: "/favicon.svg",
   },
