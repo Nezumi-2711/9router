@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Button, Card, ManualConfigModal, ModelSelectModal } from "@/shared/components";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { DEFAULT_MODEL_TOKEN_LIMITS, getInputTokenOptions, getOutputTokenOptions } from "@/shared/constants/copilotModelTokens.js";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 
 const DEFAULT_MODEL = "provider/model-id";
+const COPILOT_API_KEY_INPUT = "${input:chat.lm.secret.9router}";
 
 const normalizeV1 = (url) => {
   const trimmed = (url || "").replace(/\/+$/, "");
@@ -20,7 +22,34 @@ const withThinkingLevel = (model, thinkingLevel) => (
   model && thinkingLevel ? `${model}(${thinkingLevel})` : model
 );
 
-function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "", opencodeModels = [], opencodeDefaultModel = "", coworkThinking = {} }) {
+const MODEL_NAME_TERMS = {
+  ai: "AI",
+  claude: "Claude",
+  codex: "Codex",
+  deepseek: "DeepSeek",
+  gemini: "Gemini",
+  glm: "GLM",
+  gpt: "GPT",
+  kimi: "Kimi",
+  minimax: "MiniMax",
+  mistral: "Mistral",
+  qwen: "Qwen",
+};
+
+const formatModelName = (modelId) => {
+  const unprefixedModelId = modelId.replace(/^.*\//, "");
+  const [, baseModelId, aliasSuffix] = unprefixedModelId.match(/^(.*?)(?:\(([^()]+)\))?$/) || [];
+  const formatTerms = (value) => value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => MODEL_NAME_TERMS[part.toLowerCase()] || `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+  const modelName = formatTerms(baseModelId || unprefixedModelId);
+
+  return aliasSuffix ? `${modelName} (${formatTerms(aliasSuffix)})` : modelName;
+};
+
+function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "", opencodeModels = [], opencodeDefaultModel = "", coworkThinking = {}, copilotTokens = {}, copilotThinking = {}, connectedModels = [] }) {
   const endpoint = normalizeV1(baseUrl);
   const selectedModels = models.length ? models : [DEFAULT_MODEL];
   const model = selectedModels[0];
@@ -75,13 +104,39 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
     case "copilot":
       return [{
         filename: "chatLanguageModels.json",
-        content: toJson(selectedModels.map((id) => ({
-          name: id,
-          vendor: "9Router",
-          model: id,
-          apiBase: endpoint,
-          apiKey,
-        }))),
+        content: toJson(Object.values(selectedModels.reduce((groups, id) => {
+          const connectedModel = connectedModels.find((item) => item.fullModel === id);
+          const providerId = connectedModel?.providerAlias || id.split("/")[0] || "9router";
+          const providerName = connectedModel?.provider?.name || formatModelName(providerId);
+          const group = groups[providerId] || {
+            name: providerName,
+            vendor: "customendpoint",
+            apiType: "chat-completions",
+            // VS Code resolves this input lazily, prompting the user for their
+            // 9Router key before the custom model can service a chat request.
+            apiKey: COPILOT_API_KEY_INPUT,
+            models: [],
+          };
+          const tokens = copilotTokens[id] || {};
+          const modelId = withThinkingLevel(id, copilotThinking[id]);
+          const entry = {
+            id: modelId,
+            name: formatModelName(modelId),
+            url: `${endpoint}/chat/completions`,
+            toolCalling: true,
+            vision: true,
+            streaming: true,
+          };
+          if (copilotThinking[id]) {
+            entry.thinking = true;
+            entry.reasoningEffortFormat = "chat-completions";
+          }
+          if (tokens.maxInputTokens) entry.maxInputTokens = tokens.maxInputTokens;
+          if (tokens.maxOutputTokens) entry.maxOutputTokens = tokens.maxOutputTokens;
+          group.models.push(entry);
+          groups[providerId] = group;
+          return groups;
+        }, {}))),
       }];
     case "cowork":
       return [{
@@ -126,16 +181,20 @@ export default function ConfigGeneratorCard({
   const [opencodeModels, setOpencodeModels] = useState([]);
   const [opencodeDefaultModel, setOpencodeDefaultModel] = useState("");
   const [coworkThinking, setCoworkThinking] = useState({});
+  const [copilotTokens, setCopilotTokens] = useState({});
+  const [copilotThinking, setCopilotThinking] = useState({});
   const [connectedModels, setConnectedModels] = useState(null);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
 
   const effectiveBaseUrl = customBaseUrl || baseUrl;
-  const apiKey = selectedApiKey.trim() || (cloudEnabled ? "<API_KEY_FROM_DASHBOARD>" : "sk_9router");
+  const apiKey = toolId === "copilot"
+    ? COPILOT_API_KEY_INPUT
+    : selectedApiKey.trim() || (cloudEnabled ? "<API_KEY_FROM_DASHBOARD>" : "sk_9router");
   const configs = useMemo(
-    () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking }),
-    [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking]
+    () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking, connectedModels: connectedModels || [] }),
+    [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking, connectedModels]
   );
 
   const getThinkingLevelsForModel = (fullModel) => {
@@ -144,8 +203,31 @@ export default function ConfigGeneratorCard({
     return getThinkingLevels(connectedModel.provider.id, connectedModel.model);
   };
 
+  const loadCopilotTokenLimits = async (modelIds) => {
+    try {
+      const response = await fetch("/api/models/token-limits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ models: modelIds }),
+      });
+      if (!response.ok) throw new Error("Failed to load models.dev token limits");
+
+      const { limits = {} } = await response.json();
+      setCopilotTokens((current) => Object.entries(limits).reduce((next, [model, limit]) => {
+        const currentLimit = current[model];
+        const hasUserOverride = currentLimit
+          && (currentLimit.maxInputTokens !== DEFAULT_MODEL_TOKEN_LIMITS.maxInputTokens
+            || currentLimit.maxOutputTokens !== DEFAULT_MODEL_TOKEN_LIMITS.maxOutputTokens);
+        next[model] = hasUserOverride ? currentLimit : limit;
+        return next;
+      }, { ...current }));
+    } catch (error) {
+      console.log("Error loading models.dev token limits:", error);
+    }
+  };
+
   useEffect(() => {
-    if (toolId !== "claude" && toolId !== "codex" && toolId !== "opencode" && toolId !== "cowork") return;
+    if (toolId !== "claude" && toolId !== "codex" && toolId !== "opencode" && toolId !== "cowork" && toolId !== "copilot") return;
 
     let cancelled = false;
     const loadConnectedModels = async () => {
@@ -168,6 +250,11 @@ export default function ConfigGeneratorCard({
     if (!selected?.value || selectedModels.includes(selected.value)) return;
     setSelectedModels((current) => [...current, selected.value]);
     if (toolId === "cowork") setCoworkThinking((current) => ({ ...current, [selected.value]: "" }));
+    if (toolId === "copilot") {
+      setCopilotThinking((current) => ({ ...current, [selected.value]: "" }));
+      setCopilotTokens((current) => ({ ...current, [selected.value]: DEFAULT_MODEL_TOKEN_LIMITS }));
+      loadCopilotTokenLimits([selected.value]);
+    }
   };
 
   const removeCoworkModel = (model) => {
@@ -176,6 +263,20 @@ export default function ConfigGeneratorCard({
       const remainingThinking = { ...current };
       delete remainingThinking[model];
       return remainingThinking;
+    });
+  };
+
+  const removeCopilotModel = (model) => {
+    setSelectedModels((current) => current.filter((item) => item !== model));
+    setCopilotThinking((current) => {
+      const remaining = { ...current };
+      delete remaining[model];
+      return remaining;
+    });
+    setCopilotTokens((current) => {
+      const remaining = { ...current };
+      delete remaining[model];
+      return remaining;
     });
   };
 
@@ -235,10 +336,12 @@ export default function ConfigGeneratorCard({
             cloudUrl={process.env.NEXT_PUBLIC_CLOUD_URL}
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-text-muted">
-          API key
-          <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} />
-        </label>
+        {toolId !== "copilot" && (
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-text-muted">
+            API key
+            <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} />
+          </label>
+        )}
         {toolId === "claude" ? (
           <div className="flex flex-col gap-3">
             <span className="text-xs font-medium text-text-muted">Default Claude models</span>
@@ -382,6 +485,78 @@ export default function ConfigGeneratorCard({
             ) : <p className="text-xs text-text-muted">No model selected. The generated file uses <code>{DEFAULT_MODEL}</code> as a placeholder.</p>}
             <p className="text-xs text-text-muted">Cowork exposes every configured model in its picker. For models that support it, select a reasoning level to append it to the routed model ID.</p>
           </div>
+        ) : toolId === "copilot" ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-muted">Models</span>
+              <Button variant="secondary" size="sm" onClick={() => setModelModalOpen(true)}>
+                <span className="material-symbols-outlined mr-1 text-[16px]">add</span>
+                Add model
+              </Button>
+            </div>
+            {selectedModels.length ? (
+              <div className="flex flex-col gap-2">
+                {selectedModels.map((model) => {
+                  const thinkingLevels = getThinkingLevelsForModel(model);
+                  const tokens = copilotTokens[model] || DEFAULT_MODEL_TOKEN_LIMITS;
+                  const inputOptions = getInputTokenOptions(tokens);
+                  const outputOptions = getOutputTokenOptions(tokens);
+                  return (
+                    <div key={model} className="flex flex-col gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 flex-1 break-all text-xs font-medium text-text-main">{model}</span>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeCopilotModel(model)} aria-label={`Remove ${model}`}>Remove</Button>
+                      </div>
+                      {thinkingLevels && (
+                        <label className="flex items-center gap-2 text-xs font-medium text-text-muted">
+                          Reasoning / thinking
+                          <select
+                            value={copilotThinking[model] || ""}
+                            onChange={(event) => setCopilotThinking((current) => ({ ...current, [model]: event.target.value }))}
+                            className="min-w-28 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
+                          >
+                            <option value="">Default</option>
+                            {thinkingLevels.map((level) => <option key={level} value={level}>{level === "none" ? "Disabled" : level}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                          maxInputTokens
+                          <select
+                            value={tokens.maxInputTokens || ""}
+                            onChange={(event) => setCopilotTokens((current) => ({
+                              ...current,
+                              [model]: { ...current[model], maxInputTokens: event.target.value ? Number(event.target.value) : undefined },
+                            }))}
+                            className="min-w-20 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
+                          >
+                            {inputOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                          maxOutputTokens
+                          <select
+                            value={tokens.maxOutputTokens || ""}
+                            onChange={(event) => setCopilotTokens((current) => ({
+                              ...current,
+                              [model]: { ...current[model], maxOutputTokens: event.target.value ? Number(event.target.value) : undefined },
+                            }))}
+                            className="min-w-20 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
+                          >
+                            {outputOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-text-muted">No model selected. The generated file uses <code>{DEFAULT_MODEL}</code> as a placeholder.</p>
+            )}
+            <p className="text-xs text-text-muted">Select models to expose in VS Code Copilot, then copy the generated <code>chatLanguageModels.json</code> to your VS Code user settings folder. VS Code prompts for your 9Router API key when you first chat with one of these models.</p>
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-3">
@@ -412,13 +587,13 @@ export default function ConfigGeneratorCard({
       <ModelSelectModal
         isOpen={modelModalOpen}
         onClose={() => { setModelModalOpen(false); setClaudeModelSlot(""); }}
-        onSelect={toolId === "claude" ? selectClaudeModel : toolId === "codex" ? selectCodexModel : toolId === "opencode" ? selectOpenCodeModel : addModel}
+        onSelect={toolId === "claude" ? selectClaudeModel : toolId === "codex" ? selectCodexModel : toolId === "opencode" ? selectOpenCodeModel : toolId === "copilot" ? addModel : addModel}
         selectedModel=""
         activeProviders={activeProviders}
         title={toolId === "claude" && claudeModelSlot ? `Select ${claudeModelSlot} model` : toolId === "codex" ? "Select Codex model" : toolId === "opencode" ? "Add OpenCode model" : `Add model for ${tool.name}`}
         closeOnSelect={toolId === "claude" || toolId === "codex"}
         addedModelValues={toolId === "claude" ? Object.values(claudeModels).filter(Boolean) : toolId === "codex" ? [codexModel].filter(Boolean) : toolId === "opencode" ? opencodeModels : selectedModels}
-        availableModels={toolId === "claude" || toolId === "codex" || toolId === "opencode" || toolId === "cowork" ? connectedModels : null}
+        availableModels={toolId === "claude" || toolId === "codex" || toolId === "opencode" || toolId === "cowork" || toolId === "copilot" ? connectedModels : null}
       />
       <ManualConfigModal isOpen={configModalOpen} onClose={() => setConfigModalOpen(false)} title={`${tool.name} configuration`} configs={configs} />
     </Card>

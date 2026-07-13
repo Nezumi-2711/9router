@@ -153,6 +153,14 @@ export const CLI_TOOLS = {
       { step: 6, title: "Select Custom Models", desc: "Add the exact 9Router model IDs below to Cursor. Click a selected model ID to copy it.", type: "modelSelector", multiple: true },
     ],
   },
+  copilot: {
+    id: "copilot",
+    name: "GitHub Copilot (VSCode)",
+    image: "/providers/copilot.png",
+    color: "#1F6FEB",
+    description: "GitHub Copilot in VS Code via custom models",
+    configType: "custom",
+  },
   // HIDDEN: gemini-cli
   // "gemini-cli": {
   //   id: "gemini-cli",
