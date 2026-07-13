@@ -48,19 +48,6 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
         },
         { filename: "~/.codex/auth.json", content: toJson({ auth_mode: "apikey", OPENAI_API_KEY: apiKey }) },
       ];
-    case "openclaw":
-      return [{
-        filename: "~/.openclaw/openclaw.json",
-        content: toJson({
-          agents: { defaults: { model: { primary: `9router/${model}` } } },
-          models: { providers: { "9router": {
-            baseUrl: endpoint,
-            apiKey,
-            api: "openai-completions",
-            models: selectedModels.map((id) => ({ id, name: id.split("/").pop() })),
-          } } },
-        }),
-      }];
     case "opencode": {
       const modelEntries = Object.fromEntries(selectedModels.map((id) => [id, {
         name: id,
@@ -88,48 +75,6 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
           apiBase: endpoint,
           apiKey,
         }))),
-      }];
-    case "cline":
-      return [{
-        filename: "~/.cline/data/globalState.json",
-        content: toJson({
-          openAiModelId: model,
-          openAiBaseUrl: endpoint,
-          openAiApiKey: apiKey,
-        }),
-      }];
-    case "kilo":
-      return [{
-        filename: "~/.local/share/kilo/auth.json",
-        content: toJson({
-          "9router": { baseUrl: endpoint, apiKey, model },
-        }),
-      }];
-    case "deepseek-tui":
-      return [{
-        filename: "~/.deepseek/config.toml",
-        content: `[model]\nprovider = "openai"\nbase_url = "${endpoint}"\napi_key = "${apiKey}"\ndefault = "${model}"\n`,
-      }];
-    case "hermes":
-      return [{
-        filename: "~/.hermes/config.yaml",
-        content: `model:\n  provider: openai\n  base_url: ${endpoint}\n  api_key: ${apiKey}\n  default: ${model}\n`,
-      }];
-    case "droid":
-      return [{
-        filename: "~/.factory/settings.json",
-        content: toJson({ customModels: selectedModels.map((id, index) => ({
-          id: `custom:9Router-${index}`,
-          name: `9Router: ${id}`,
-          baseUrl: endpoint,
-          apiKey,
-          model: id,
-        })) }),
-      }];
-    case "jcode":
-      return [{
-        filename: "~/.config/jcode/config.json",
-        content: toJson({ provider: "openai", baseUrl: endpoint, apiKey, model }),
       }];
     case "cowork":
       return [{
