@@ -27,7 +27,6 @@ const PUBLIC_API_PATHS = [
   "/api/auth/logout",
   "/api/auth/status",
   "/api/auth/oidc",
-  "/api/version",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -37,8 +36,6 @@ const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex"];
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
   "/api/settings/database",
-  "/api/version/shutdown",
-  "/api/version/update",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
 ];
