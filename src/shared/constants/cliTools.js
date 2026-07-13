@@ -138,6 +138,7 @@ export const CLI_TOOLS = {
     color: "#000000",
     description: "Cursor AI Code Editor",
     configType: "guide",
+    modelSelection: "multiple",
     requiresExternalUrl: true,
     notes: [
       { type: "warning", text: "Requires Cursor Pro account to use this feature." },
@@ -148,8 +149,8 @@ export const CLI_TOOLS = {
       { step: 2, title: "Enable OpenAI API", desc: "Enable \"OpenAI API key\" option" },
       { step: 3, title: "Base URL", value: "{{baseUrl}}", copyable: true },
       { step: 4, title: "API Key", type: "apiKeySelector" },
-      { step: 5, title: "Add Custom Model", desc: "Click \"View All Model\" → \"Add Custom Model\"" },
-      { step: 6, title: "Select Model", type: "modelSelector" },
+      { step: 5, title: "Add Custom Model", desc: "Click \"View All Models\" → \"Add Custom Model\". Repeat this step for each model selected below." },
+      { step: 6, title: "Select Custom Models", desc: "Add the exact 9Router model IDs below to Cursor. Click a selected model ID to copy it.", type: "modelSelector", multiple: true },
     ],
   },
   // HIDDEN: gemini-cli

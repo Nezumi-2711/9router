@@ -1,20 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, ModelSelectModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
 
-export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders = [], cloudEnabled = false, tunnelEnabled = false }) {
+export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, activeProviders = [], cloudEnabled = false, tunnelEnabled = false }) {
   const [copiedField, setCopiedField] = useState(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelValue, setModelValue] = useState("");
+  const [selectedModels, setSelectedModels] = useState([]);
+  const [connectedModels, setConnectedModels] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(true);
   
   // Initialize state directly with computed value - no need for useEffect
   const [selectedApiKey, setSelectedApiKey] = useState(() => 
     apiKeys?.length > 0 ? apiKeys[0].key : ""
   );
+
+  useEffect(() => {
+    if (toolId !== "cursor") return;
+
+    let cancelled = false;
+    const loadConnectedModels = async () => {
+      try {
+        const response = await fetch("/api/models/connected", { cache: "no-store" });
+        if (!response.ok) throw new Error("Failed to load connected models");
+        const data = await response.json();
+        if (!cancelled) setConnectedModels(data.models || []);
+      } catch (error) {
+        console.log(`Error loading connected models for ${tool.name}:`, error);
+        if (!cancelled) setConnectedModels([]);
+      }
+    };
+
+    loadConnectedModels();
+    return () => { cancelled = true; };
+  }, [toolId, tool.name]);
 
   const replaceVars = (text) => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
@@ -42,7 +65,17 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
   };
 
   const handleSelectModel = (model) => {
+    if (!model?.value) return;
     setModelValue(model.value);
+  };
+
+  const addSelectedModel = (model) => {
+    if (!model?.value || selectedModels.includes(model.value)) return;
+    setSelectedModels((current) => [...current, model.value]);
+  };
+
+  const removeSelectedModel = (model) => {
+    setSelectedModels((current) => current.filter((value) => value !== model.value));
   };
 
   const hasActiveProviders = activeProviders.length > 0;
@@ -53,7 +86,42 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
     </div>
   );
 
-  const renderModelSelector = () => {
+  const renderModelSelector = (item) => {
+    if (item.multiple) {
+      return (
+        <div className="mt-2 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-text-muted">Custom models to add in Cursor</span>
+            <button
+              onClick={() => setShowModelModal(true)}
+              disabled={!hasActiveProviders}
+              className={`shrink-0 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                hasActiveProviders
+                  ? "bg-bg-secondary border-border text-text-main hover:border-primary cursor-pointer"
+                  : "opacity-50 cursor-not-allowed border-border"
+              }`}
+            >
+              Add model
+            </button>
+          </div>
+          {selectedModels.length ? (
+            <div className="flex flex-wrap gap-2">
+              {selectedModels.map((model) => (
+                <div key={model} className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-bg-secondary py-1 pl-2 pr-1 text-xs text-text-main">
+                  <button type="button" onClick={() => handleCopy(model, `model-${model}`)} className="min-w-0 truncate hover:text-primary" title="Copy model ID">
+                    {model}
+                  </button>
+                  <button type="button" onClick={() => setSelectedModels((current) => current.filter((value) => value !== model))} className="rounded-full p-1 hover:text-red-500" title="Remove model" aria-label={`Remove ${model}`}>
+                    <span className="material-symbols-outlined block text-[14px]">close</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-text-muted">Select every 9Router model you plan to add as a Cursor custom model.</p>}
+        </div>
+      );
+    }
+
     return (
       <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
         <input
@@ -161,7 +229,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
               <p className="font-medium text-text">{item.title}</p>
               {item.desc && <p className="text-sm text-text-muted mt-0.5">{item.desc}</p>}
               {item.type === "apiKeySelector" && renderApiKeySelector()}
-              {item.type === "modelSelector" && renderModelSelector()}
+              {item.type === "modelSelector" && renderModelSelector(item)}
               {item.value && (
                 <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
                   <code className="w-full sm:w-auto flex-1 px-3 py-2 bg-bg-secondary rounded-lg text-sm font-mono border border-border truncate">
@@ -238,7 +306,12 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
 
   return (
     <Card padding="xs" className="overflow-hidden overflow-x-hidden">
-      <div className="flex items-center justify-between hover:cursor-pointer" onClick={onToggle}>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between text-left hover:cursor-pointer"
+        onClick={() => setIsExpanded((expanded) => !expanded)}
+        aria-expanded={isExpanded}
+      >
         <div className="flex items-center gap-3">
           <div className="size-8 rounded-lg flex items-center justify-center shrink-0">
             {renderIcon()}
@@ -249,7 +322,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
           </div>
         </div>
         <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
-      </div>
+      </button>
 
       {isExpanded && (
         <div className="mt-6 pt-6 border-t border-border">
@@ -260,10 +333,14 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
       <ModelSelectModal
         isOpen={showModelModal}
         onClose={() => setShowModelModal(false)}
-        onSelect={handleSelectModel}
+        onSelect={tool.modelSelection === "multiple" ? addSelectedModel : handleSelectModel}
+        onDeselect={tool.modelSelection === "multiple" ? removeSelectedModel : undefined}
         selectedModel={modelValue}
         activeProviders={activeProviders}
-        title="Select Model"
+        title={tool.modelSelection === "multiple" ? "Add Cursor custom model" : "Select Model"}
+        closeOnSelect={tool.modelSelection !== "multiple"}
+        addedModelValues={tool.modelSelection === "multiple" ? selectedModels : []}
+        availableModels={toolId === "cursor" ? connectedModels : null}
       />
     </Card>
   );

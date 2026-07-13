@@ -20,7 +20,7 @@ const withThinkingLevel = (model, thinkingLevel) => (
   model && thinkingLevel ? `${model}(${thinkingLevel})` : model
 );
 
-function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "" }) {
+function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "", opencodeModels = [], opencodeDefaultModel = "", coworkThinking = {} }) {
   const endpoint = normalizeV1(baseUrl);
   const selectedModels = models.length ? models : [DEFAULT_MODEL];
   const model = selectedModels[0];
@@ -49,19 +49,26 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
         { filename: "~/.codex/auth.json", content: toJson({ auth_mode: "apikey", OPENAI_API_KEY: apiKey }) },
       ];
     case "opencode": {
-      const modelEntries = Object.fromEntries(selectedModels.map((id) => [id, {
-        name: id,
-        modalities: { input: ["text", "image"], output: ["text"] },
-      }]));
+      // OpenCode identifies a default model as <provider-id>/<model-id>. Our
+      // custom provider is "9router", while the 9Router model ID itself keeps
+      // its upstream provider prefix (for example, "cc/claude-sonnet-5").
+      const configuredModels = opencodeModels.length ? opencodeModels : [DEFAULT_MODEL];
+      const modelId = configuredModels.includes(opencodeDefaultModel)
+        ? opencodeDefaultModel
+        : configuredModels[0];
       return [{
         filename: "~/.config/opencode/opencode.json",
         content: toJson({
-          provider: { "9router": {
-            npm: "@ai-sdk/openai-compatible",
-            options: { baseURL: endpoint, apiKey },
-            models: modelEntries,
-          } },
-          model: `9router/${model}`,
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            "9router": {
+              npm: "@ai-sdk/openai-compatible",
+              name: "9Router",
+              options: { baseURL: endpoint, apiKey },
+              models: Object.fromEntries(configuredModels.map((id) => [id, { name: id }])),
+            },
+          },
+          model: `9router/${modelId}`,
         }),
       }];
     }
@@ -78,8 +85,19 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
       }];
     case "cowork":
       return [{
-        filename: "Claude Desktop third-party inference configuration.json",
-        content: toJson({ baseUrl: endpoint, apiKey, models: selectedModels }),
+        // Claude Desktop reads third-party inference profiles from its 3P
+        // config library. Unlike Claude Code, Cowork does not support named
+        // Sonnet/Opus/Haiku environment-variable slots: every entry here is
+        // exposed directly in Claude Desktop's model picker.
+        filename: "Claude-3p/configLibrary/<appliedId>.json",
+        content: toJson({
+          inferenceProvider: "gateway",
+          inferenceGatewayBaseUrl: endpoint,
+          inferenceGatewayApiKey: apiKey,
+          inferenceModels: selectedModels.map((name) => ({
+            name: withThinkingLevel(name, coworkThinking[name]),
+          })),
+        }),
       }];
     default:
       return [{ filename: "config.json", content: toJson({ baseUrl: endpoint, apiKey, model }) }];
@@ -105,6 +123,9 @@ export default function ConfigGeneratorCard({
   const [claudeModelSlot, setClaudeModelSlot] = useState("");
   const [codexModel, setCodexModel] = useState("");
   const [codexThinking, setCodexThinking] = useState("");
+  const [opencodeModels, setOpencodeModels] = useState([]);
+  const [opencodeDefaultModel, setOpencodeDefaultModel] = useState("");
+  const [coworkThinking, setCoworkThinking] = useState({});
   const [connectedModels, setConnectedModels] = useState(null);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [modelModalOpen, setModelModalOpen] = useState(false);
@@ -113,8 +134,8 @@ export default function ConfigGeneratorCard({
   const effectiveBaseUrl = customBaseUrl || baseUrl;
   const apiKey = selectedApiKey.trim() || (cloudEnabled ? "<API_KEY_FROM_DASHBOARD>" : "sk_9router");
   const configs = useMemo(
-    () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking }),
-    [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking]
+    () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking }),
+    [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking]
   );
 
   const getThinkingLevelsForModel = (fullModel) => {
@@ -124,7 +145,7 @@ export default function ConfigGeneratorCard({
   };
 
   useEffect(() => {
-    if (toolId !== "claude" && toolId !== "codex") return;
+    if (toolId !== "claude" && toolId !== "codex" && toolId !== "opencode" && toolId !== "cowork") return;
 
     let cancelled = false;
     const loadConnectedModels = async () => {
@@ -146,6 +167,16 @@ export default function ConfigGeneratorCard({
   const addModel = (selected) => {
     if (!selected?.value || selectedModels.includes(selected.value)) return;
     setSelectedModels((current) => [...current, selected.value]);
+    if (toolId === "cowork") setCoworkThinking((current) => ({ ...current, [selected.value]: "" }));
+  };
+
+  const removeCoworkModel = (model) => {
+    setSelectedModels((current) => current.filter((item) => item !== model));
+    setCoworkThinking((current) => {
+      const remainingThinking = { ...current };
+      delete remainingThinking[model];
+      return remainingThinking;
+    });
   };
 
   const selectClaudeModel = (selected) => {
@@ -164,6 +195,18 @@ export default function ConfigGeneratorCard({
     if (!selected?.value) return;
     setCodexModel(selected.value);
     setCodexThinking("");
+  };
+
+  const selectOpenCodeModel = (selected) => {
+    if (!selected?.value || opencodeModels.includes(selected.value)) return;
+    setOpencodeModels((current) => [...current, selected.value]);
+    if (!opencodeDefaultModel) setOpencodeDefaultModel(selected.value);
+  };
+
+  const removeOpenCodeModel = (model) => {
+    const remainingModels = opencodeModels.filter((item) => item !== model);
+    setOpencodeModels(remainingModels);
+    if (opencodeDefaultModel === model) setOpencodeDefaultModel(remainingModels[0] || "");
   };
 
   return (
@@ -274,6 +317,71 @@ export default function ConfigGeneratorCard({
             )}
             <p className="text-xs text-text-muted">The selected reasoning level is appended to the model ID, for example <code>cx/gpt-5.6-sol(high)</code>.</p>
           </div>
+        ) : toolId === "opencode" ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-muted">Models</span>
+              <Button variant="secondary" size="sm" onClick={() => setModelModalOpen(true)}>
+                <span className="material-symbols-outlined mr-1 text-[16px]">add</span>
+                Add model
+              </Button>
+            </div>
+            {opencodeModels.length ? (
+              <div className="flex flex-wrap gap-2">
+                {opencodeModels.map((model) => {
+                  const isDefault = model === opencodeDefaultModel;
+                  return (
+                    <div key={model} className={`inline-flex items-center gap-1 rounded-full border bg-bg-secondary pr-1 text-xs text-text-main ${isDefault ? "border-primary" : "border-border"}`}>
+                      <button type="button" onClick={() => setOpencodeDefaultModel(model)} className="rounded-full px-2 py-1 hover:text-primary" title="Set as default model">
+                        {model}{isDefault && <span className="ml-1 text-primary">default</span>}
+                      </button>
+                      <button type="button" onClick={() => removeOpenCodeModel(model)} className="rounded-full p-1 hover:text-red-500" title="Remove model" aria-label={`Remove ${model}`}>
+                        <span className="material-symbols-outlined block text-[14px]">close</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="text-xs text-text-muted">No model selected. The generated file uses <code>{DEFAULT_MODEL}</code> as a placeholder.</p>}
+            <p className="text-xs text-text-muted">Add every model to expose in OpenCode, then click a model to make it the default.</p>
+          </div>
+        ) : toolId === "cowork" ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-muted">Models</span>
+              <Button variant="secondary" size="sm" onClick={() => setModelModalOpen(true)}>
+                <span className="material-symbols-outlined mr-1 text-[16px]">add</span>
+                Add model
+              </Button>
+            </div>
+            {selectedModels.length ? (
+              <div className="flex flex-col gap-2">
+                {selectedModels.map((model) => {
+                  const thinkingLevels = getThinkingLevelsForModel(model);
+                  return (
+                    <div key={model} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2">
+                      <span className="min-w-0 flex-1 break-all text-xs text-text-main">{model}</span>
+                      {thinkingLevels && (
+                        <label className="flex items-center gap-2 text-xs font-medium text-text-muted">
+                          Reasoning / thinking
+                          <select
+                            value={coworkThinking[model] || ""}
+                            onChange={(event) => setCoworkThinking((current) => ({ ...current, [model]: event.target.value }))}
+                            className="min-w-28 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
+                          >
+                            <option value="">Default</option>
+                            {thinkingLevels.map((level) => <option key={level} value={level}>{level === "none" ? "Disabled" : level}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeCoworkModel(model)} aria-label={`Remove ${model}`}>Remove</Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="text-xs text-text-muted">No model selected. The generated file uses <code>{DEFAULT_MODEL}</code> as a placeholder.</p>}
+            <p className="text-xs text-text-muted">Cowork exposes every configured model in its picker. For models that support it, select a reasoning level to append it to the routed model ID.</p>
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-3">
@@ -304,13 +412,13 @@ export default function ConfigGeneratorCard({
       <ModelSelectModal
         isOpen={modelModalOpen}
         onClose={() => { setModelModalOpen(false); setClaudeModelSlot(""); }}
-        onSelect={toolId === "claude" ? selectClaudeModel : toolId === "codex" ? selectCodexModel : addModel}
+        onSelect={toolId === "claude" ? selectClaudeModel : toolId === "codex" ? selectCodexModel : toolId === "opencode" ? selectOpenCodeModel : addModel}
         selectedModel=""
         activeProviders={activeProviders}
-        title={toolId === "claude" && claudeModelSlot ? `Select ${claudeModelSlot} model` : toolId === "codex" ? "Select Codex model" : `Add model for ${tool.name}`}
+        title={toolId === "claude" && claudeModelSlot ? `Select ${claudeModelSlot} model` : toolId === "codex" ? "Select Codex model" : toolId === "opencode" ? "Add OpenCode model" : `Add model for ${tool.name}`}
         closeOnSelect={toolId === "claude" || toolId === "codex"}
-        addedModelValues={toolId === "claude" ? Object.values(claudeModels).filter(Boolean) : toolId === "codex" ? [codexModel].filter(Boolean) : selectedModels}
-        availableModels={toolId === "claude" || toolId === "codex" ? connectedModels : null}
+        addedModelValues={toolId === "claude" ? Object.values(claudeModels).filter(Boolean) : toolId === "codex" ? [codexModel].filter(Boolean) : toolId === "opencode" ? opencodeModels : selectedModels}
+        availableModels={toolId === "claude" || toolId === "codex" || toolId === "opencode" || toolId === "cowork" ? connectedModels : null}
       />
       <ManualConfigModal isOpen={configModalOpen} onClose={() => setConfigModalOpen(false)} title={`${tool.name} configuration`} configs={configs} />
     </Card>
