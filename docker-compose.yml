@@ -1,30 +1,47 @@
 services:
   9router:
-    image: decolua/9router:latest
-    container_name: 9router
-    restart: always
-    ports:
-      - "20128:20128"
+    # Dokploy rebuilds this image from the checked-out Git commit on every deploy.
+    # Do not replace this with a published `decolua/9router` image if auto-deploying
+    # changes from this repository is required.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 9router-app:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     volumes:
       - 9router-data:/app/data
-    env_file:
-      - .env
     environment:
       DATA_DIR: /app/data
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
-      HEADROOM_URL: http://headroom:8787
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in Dokploy environment variables}
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:?Set INITIAL_PASSWORD in Dokploy environment variables}
+      API_KEY_SECRET: ${API_KEY_SECRET:?Set API_KEY_SECRET in Dokploy environment variables}
+      MACHINE_ID_SALT: ${MACHINE_ID_SALT:?Set MACHINE_ID_SALT in Dokploy environment variables}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      HEADROOM_URL: ${HEADROOM_URL:-http://headroom:8787}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:20128/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       - headroom
 
+  # Optional token-compression sidecar. Set HEADROOM_URL to another reachable
+  # service in Dokploy if this built-in sidecar is not wanted.
   headroom:
     image: ghcr.io/chopratejas/headroom:latest
-    container_name: headroom
-    restart: always
-    ports:
-      - "8787:8787"
+    restart: unless-stopped
 
 volumes:
   9router-data:
-    name: 9router-data
+    # Keep this value stable. Docker preserves named volumes when Dokploy
+    # replaces the application container during a deployment.
+    name: ${DATA_VOLUME_NAME:-9router-data}
