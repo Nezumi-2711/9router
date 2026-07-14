@@ -5,6 +5,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { Button, Card, CardSkeleton } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { formatResetTime, REFRESH_INTERVAL_MS } from "./ProviderLimits/utils";
+import { formatVietnamDateTime, formatVietnamTime, isSameVietnamDay } from "@/shared/utils/dateTime";
 
 function getProviderInfo(providerId) {
   return AI_PROVIDERS[providerId] || {
@@ -16,13 +17,11 @@ function getProviderInfo(providerId) {
 function formatUpdatedAt(value) {
   if (!value) return "Not updated yet";
 
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "Not updated yet";
-
-  return `Updated ${date.toLocaleTimeString(undefined, {
+  const formattedTime = formatVietnamTime(value, {
     hour: "2-digit",
     minute: "2-digit",
-  })}`;
+  });
+  return formattedTime ? `Updated ${formattedTime}` : "Not updated yet";
 }
 
 function formatResetAt(value) {
@@ -31,14 +30,13 @@ function formatResetAt(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
 
-  const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
-  const isTomorrow = date.toDateString() === new Date(now.getTime() + 86400000).toDateString();
-  const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const isToday = isSameVietnamDay(date);
+  const isTomorrow = isSameVietnamDay(date, new Date(Date.now() + 86400000));
+  const time = formatVietnamTime(date, { hour: "2-digit", minute: "2-digit" });
 
   if (isToday) return `today at ${time}`;
   if (isTomorrow) return `tomorrow at ${time}`;
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatVietnamDateTime(date, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function getQuotaTone(percentage) {

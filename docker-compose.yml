@@ -26,6 +26,7 @@ services:
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
+      TZ: Asia/Ho_Chi_Minh
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in Dokploy environment variables}
       INITIAL_PASSWORD: ${INITIAL_PASSWORD:?Set INITIAL_PASSWORD in Dokploy environment variables}
       API_KEY_SECRET: ${API_KEY_SECRET:?Set API_KEY_SECRET in Dokploy environment variables}

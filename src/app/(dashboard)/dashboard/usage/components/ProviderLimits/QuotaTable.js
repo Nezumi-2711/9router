@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatResetTime, getRemainingPercentage } from "./utils";
+import { formatVietnamDateTime, formatVietnamTime, isSameVietnamDay } from "@/shared/utils/dateTime";
 
 const PAGE_SIZE = 10;
 
@@ -13,24 +14,21 @@ function formatResetTimeDisplay(resetTime) {
 
   try {
     const date = new Date(resetTime);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (!Number.isFinite(date.getTime())) return null;
 
     let dayStr = "";
-    if (date >= today && date < tomorrow) {
+    if (isSameVietnamDay(date)) {
       dayStr = "Today";
-    } else if (date >= tomorrow && date < new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000)) {
+    } else if (isSameVietnamDay(date, new Date(Date.now() + 86400000))) {
       dayStr = "Tomorrow";
     } else {
-      dayStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      dayStr = formatVietnamDateTime(date, { month: "short", day: "numeric" });
     }
 
-    const timeStr = date.toLocaleTimeString("en-US", {
-      hour: "numeric",
+    const timeStr = formatVietnamTime(date, {
+      hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
+      hourCycle: "h23",
     });
 
     return `${dayStr}, ${timeStr}`;

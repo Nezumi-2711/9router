@@ -2,6 +2,7 @@
 
 import { cn } from "@/shared/utils/cn";
 import { formatResetTime } from "./utils";
+import { formatVietnamDateTime, formatVietnamTime, isSameVietnamDay } from "@/shared/utils/dateTime";
 
 // Calculate color based on remaining percentage
 const getColorClasses = (remainingPercentage) => {
@@ -38,25 +39,25 @@ const formatResetTimeDisplay = (resetTime) => {
   
   try {
     const resetDate = new Date(resetTime);
-    const now = new Date();
-    const isToday = resetDate.toDateString() === now.toDateString();
-    const isTomorrow = resetDate.toDateString() === new Date(now.getTime() + 86400000).toDateString();
+    if (!Number.isFinite(resetDate.getTime())) return null;
+    const isToday = isSameVietnamDay(resetDate);
+    const isTomorrow = isSameVietnamDay(resetDate, new Date(Date.now() + 86400000));
     
-    const timeStr = resetDate.toLocaleTimeString(undefined, {
+    const timeStr = formatVietnamTime(resetDate, {
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
+      hourCycle: "h23",
     });
     
     if (isToday) return `Today, ${timeStr}`;
     if (isTomorrow) return `Tomorrow, ${timeStr}`;
     
-    return resetDate.toLocaleString(undefined, {
+    return formatVietnamDateTime(resetDate, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
+      hourCycle: "h23",
     });
   } catch {
     return null;

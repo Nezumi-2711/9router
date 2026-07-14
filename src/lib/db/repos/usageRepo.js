@@ -3,6 +3,13 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
 import { appendUsageAccessClause, getUsageAccessScope } from "./usageAccessScope.js";
+import {
+  formatVietnamDateTime,
+  formatVietnamTime,
+  getVietnamDateKey,
+  getVietnamStartOfDay,
+  shiftVietnamDateKey,
+} from "../../../shared/utils/dateTime.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -47,8 +54,7 @@ function scheduleStatsEvent(event, delayMs = 150) {
 }
 
 function getLocalDateKey(timestamp) {
-  const d = timestamp ? new Date(timestamp) : new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return getVietnamDateKey(timestamp || new Date());
 }
 
 function addToCounter(target, key, values) {
@@ -361,9 +367,7 @@ function loadDaysInRange(adapter, maxDays) {
   if (maxDays == null) {
     return adapter.all(`SELECT dateKey, data FROM usageDaily`);
   }
-  const today = new Date();
-  const cutoff = new Date(today.getFullYear(), today.getMonth(), today.getDate() - maxDays + 1);
-  const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
+  const cutoffKey = shiftVietnamDateKey(getVietnamDateKey(), -(maxDays - 1));
   return adapter.all(`SELECT dateKey, data FROM usageDaily WHERE dateKey >= ?`, [cutoffKey]);
 }
 
@@ -449,17 +453,12 @@ function loadUserBreakdownRows(db, period) {
 
 function getUsagePeriodCutoff(period) {
   if (period === "today") {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    return startOfDay.toISOString();
+    return getVietnamStartOfDay().toISOString();
   }
   if (period === "24h") return new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
   const days = { "7d": 7, "30d": 30, "60d": 60 }[period];
   if (!days) return null;
-  const startOfRange = new Date();
-  startOfRange.setHours(0, 0, 0, 0);
-  startOfRange.setDate(startOfRange.getDate() - days + 1);
-  return startOfRange.toISOString();
+  return new Date(`${shiftVietnamDateKey(getVietnamDateKey(), -(days - 1))}T00:00:00+07:00`).toISOString();
 }
 
 async function getScopedUsageStats(period, user, scope) {
@@ -796,9 +795,7 @@ export async function getUsageStats(period = "all", user = null) {
     // 24h / today: live history
     let cutoff;
     if (period === "today") {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      cutoff = startOfDay.toISOString();
+      cutoff = getVietnamStartOfDay().toISOString();
     } else {
       cutoff = new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
     }
@@ -896,11 +893,11 @@ function buildChartDataFromRows(rows, period) {
   const bucketCount = isHourly ? 24 : period === "7d" ? 7 : period === "30d" ? 30 : 60;
   const bucketMs = isHourly ? 3600000 : 86400000;
   const startTime = period === "today"
-    ? new Date(new Date().setHours(0, 0, 0, 0)).getTime()
-    : isHourly ? now - bucketCount * bucketMs : new Date(new Date().setHours(0, 0, 0, 0) - (bucketCount - 1) * bucketMs).getTime();
+    ? getVietnamStartOfDay().getTime()
+    : isHourly ? now - bucketCount * bucketMs : new Date(`${shiftVietnamDateKey(getVietnamDateKey(), -(bucketCount - 1))}T00:00:00+07:00`).getTime();
   const labelFn = isHourly
-    ? (timestamp) => new Date(timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
-    : (timestamp) => new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    ? (timestamp) => formatVietnamTime(timestamp, { hour: "2-digit", minute: "2-digit" })
+    : (timestamp) => formatVietnamDateTime(timestamp, { month: "short", day: "numeric" });
   const buckets = Array.from({ length: bucketCount }, (_, index) => ({ label: labelFn(startTime + index * bucketMs), tokens: 0, cost: 0 }));
 
   for (const row of rows) {
@@ -936,11 +933,9 @@ export async function getChartData(period = "7d", user = null) {
   if (period === "today") {
     const bucketCount = 24;
     const bucketMs = 3600000;
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const startTime = startOfDay.getTime();
+    const startTime = getVietnamStartOfDay().getTime();
     const endTime = startTime + bucketCount * bucketMs;
-    const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const labelFn = (ts) => formatVietnamTime(ts, { hour: "2-digit", minute: "2-digit" });
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
     const rows = db.all(
@@ -962,7 +957,7 @@ export async function getChartData(period = "7d", user = null) {
   if (period === "24h") {
     const bucketCount = 24;
     const bucketMs = 3600000;
-    const labelFn = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const labelFn = (ts) => formatVietnamTime(ts, { hour: "2-digit", minute: "2-digit" });
     const startTime = now - bucketCount * bucketMs;
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
@@ -981,8 +976,8 @@ export async function getChartData(period = "7d", user = null) {
   }
 
   const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
-  const today = new Date();
-  const labelFn = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const todayKey = getVietnamDateKey();
+  const labelFn = (dateKey) => formatVietnamDateTime(`${dateKey}T00:00:00+07:00`, { month: "short", day: "numeric" });
 
   // Build map of dateKey → day data
   const dayRows = loadDaysInRange(db, bucketCount);
@@ -990,12 +985,10 @@ export async function getChartData(period = "7d", user = null) {
   for (const r of dayRows) dayMap[r.dateKey] = parseJson(r.data, {});
 
   return Array.from({ length: bucketCount }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (bucketCount - 1 - i));
-    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dateKey = shiftVietnamDateKey(todayKey, -(bucketCount - 1 - i));
     const dayData = dayMap[dateKey];
     return {
-      label: labelFn(d),
+      label: labelFn(dateKey),
       tokens: dayData ? (dayData.promptTokens || 0) + (dayData.completionTokens || 0) : 0,
       cost: dayData ? (dayData.cost || 0) : 0,
     };
@@ -1003,8 +996,15 @@ export async function getChartData(period = "7d", user = null) {
 }
 
 function formatLogDate(date = new Date()) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return formatVietnamDateTime(date, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
 }
 
 // No-op: request log is now derived from usageHistory table on read.

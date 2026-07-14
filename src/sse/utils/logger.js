@@ -1,3 +1,5 @@
+import { VIETNAM_TIME_ZONE } from "open-sse/config/time.js";
+
 // Logger utility for cloud
 
 const LOG_LEVELS = {
@@ -10,7 +12,7 @@ const LOG_LEVELS = {
 const LEVEL = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase?.()] ?? LOG_LEVELS.INFO;
 
 function formatTime() {
-  return new Date().toLocaleTimeString("en-US", { hour12: false });
+  return new Date().toLocaleTimeString("en-US", { timeZone: VIETNAM_TIME_ZONE, hour12: false });
 }
 
 // Colored-dot tags to correlate request lines by session (same session → same color)

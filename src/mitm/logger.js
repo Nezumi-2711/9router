@@ -4,8 +4,10 @@ const zlib = require("zlib");
 const { DATA_DIR } = require("./paths");
 const { LOG_BLACKLIST_URL_PARTS } = require("./config");
 
+const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
+
 function time() {
-  return new Date().toLocaleTimeString("en-US", { hour12: false });
+  return new Date().toLocaleTimeString("en-US", { timeZone: VIETNAM_TIME_ZONE, hour12: false });
 }
 
 const log = (msg) => console.log(`[${time()}] [MITM] ${msg}`);

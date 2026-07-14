@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { formatVietnamDateTime } from "@/shared/utils/dateTime";
 
 function getStatusVariant(status) {
   if (status === "active") return "success";
@@ -12,9 +13,7 @@ function getStatusVariant(status) {
 
 function formatDateTime(value) {
   if (!value) return "Never";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Never";
-  return date.toLocaleString();
+  return formatVietnamDateTime(value, { dateStyle: "medium", timeStyle: "medium" }) || "Never";
 }
 
 function normalizeFormData(data = {}) {

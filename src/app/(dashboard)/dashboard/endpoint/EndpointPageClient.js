@@ -17,6 +17,7 @@ import EndpointRow from "./components/EndpointRow";
 import StatusAlert from "./components/StatusAlert";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
+import { formatVietnamDateTime } from "@/shared/utils/dateTime";
 export default function APIPageClient({ machineId, isAdmin }) {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1034,7 +1035,7 @@ export default function APIPageClient({ machineId, isAdmin }) {
                   </div>
                 </div>
                 <p className="hidden text-right text-xs text-text-muted sm:block">
-                  Created<br />{new Date(key.createdAt).toLocaleDateString()}
+                  Created<br />{formatVietnamDateTime(key.createdAt, { dateStyle: "medium" }) || "—"}
                 </p>
                 <div className="flex items-center gap-1.5">
                   <Toggle

@@ -7,6 +7,7 @@ import Drawer from "@/shared/components/Drawer";
 import Pagination from "@/shared/components/Pagination";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import { formatVietnamDateTime } from "@/shared/utils/dateTime";
 
 let providerNameCache = null;
 let providerNodesCache = null;
@@ -286,7 +287,7 @@ export default function RequestDetailsTab() {
                     className="border-b border-black/5 dark:border-white/5 last:border-b-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="whitespace-nowrap p-4 text-sm text-text-main">
-                      {new Date(detail.timestamp).toLocaleString()}
+                      {formatVietnamDateTime(detail.timestamp, { dateStyle: "medium", timeStyle: "medium" }) || "—"}
                     </td>
                     <td className="max-w-[260px] truncate p-4 font-mono text-sm text-text-main">
                       {detail.model}
@@ -358,7 +359,7 @@ export default function RequestDetailsTab() {
               </div>
               <div>
                 <span className="text-text-muted">Timestamp:</span>{" "}
-                <span className="text-text-main">{new Date(selectedDetail.timestamp).toLocaleString()}</span>
+                <span className="text-text-main">{formatVietnamDateTime(selectedDetail.timestamp, { dateStyle: "medium", timeStyle: "medium" }) || "—"}</span>
               </div>
               <div>
                  <span className="text-text-muted">Provider:</span>{" "}

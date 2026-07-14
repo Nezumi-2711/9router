@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import useUserStore from "@/store/userStore";
+import { formatVietnamDateTime } from "@/shared/utils/dateTime";
 
 const EMPTY_FORM = { username: "", password: "", role: "user", isActive: true };
 
 function formatDate(value) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return formatVietnamDateTime(value, { dateStyle: "medium", timeStyle: "short" }) || "—";
 }
 
 export default function UsersPage() {
