@@ -32,6 +32,11 @@ first successful deployment**, or Dokploy will mount a new, empty volume.
 The Compose file contains a `build` section, so every deploy builds the image
 from the exact checked-out commit rather than pulling a published image.
 
+The `9router` service is also limited to **0.5 CPU** and **2 GB RAM** through
+the Compose `deploy.resources.limits` configuration. The limit is per
+`9router` container instance; the optional `headroom` sidecar has independent
+resource usage.
+
 ## 2. Configure environment variables
 
 In the Dokploy application's **Environment** settings, add the following

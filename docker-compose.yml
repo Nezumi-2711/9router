@@ -8,6 +8,13 @@ services:
       dockerfile: Dockerfile
     image: 9router-app:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    # Dokploy honors Compose deploy resource limits for this application
+    # container. Values are per service instance.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 2G
     # Dokploy/Traefik should route to this internal port. Do not publish it
     # with `ports:`; public HTTP(S) is provided by the Dokploy domain router.
     expose:
