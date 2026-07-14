@@ -7,7 +7,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -17,7 +16,7 @@ export default function CombosPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
-  const [activeProviders, setActiveProviders] = useState([]);
+  const [connectedModels, setConnectedModels] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
   const [modelCaps, setModelCaps] = useState({});
   const [confirmState, setConfirmState] = useState(null);
@@ -29,23 +28,19 @@ export default function CombosPage() {
 
   async function fetchData() {
     try {
-      const [combosRes, providersRes, settingsRes, modelsRes] = await Promise.all([
+      const [combosRes, settingsRes, modelsRes] = await Promise.all([
         fetch("/api/combos"),
-        fetch("/api/providers"),
         fetch("/api/settings"),
-        fetch("/api/models"),
+        fetch("/api/models/connected", { cache: "no-store" }),
       ]);
       const combosData = await combosRes.json();
-      const providersData = await providersRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       
       // Only LLM combos here - webSearch/webFetch combos belong to media-providers/web
       if (combosRes.ok) setCombos((combosData.combos || []).filter(c => !c.kind || c.kind === "llm"));
-      if (providersRes.ok) {
-        setActiveProviders(providersData.connections || []);
-      }
       if (modelsRes.ok) {
         const md = await modelsRes.json();
+        setConnectedModels(md.models || []);
         // Build fullModel -> caps map for badge lookup
         const map = {};
         for (const m of md.models || []) if (m.caps) map[m.fullModel] = m.caps;
@@ -58,6 +53,11 @@ export default function CombosPage() {
       setLoading(false);
     }
   }
+
+  // The Models page is the source of truth for eligible models. Administrators
+  // can still see disabled rows there to manage them, but disabled models must
+  // not be added to new or edited combos because they cannot serve requests.
+  const selectableModels = connectedModels.filter((model) => !model.disabled);
 
   const handleCreate = async (data) => {
     try {
@@ -190,7 +190,7 @@ export default function CombosPage() {
               key={combo.id}
               combo={combo}
               modelCaps={modelCaps}
-              activeProviders={activeProviders}
+              availableModels={selectableModels}
               copied={copied}
               onCopy={copy}
               onEdit={() => setEditingCombo(combo)}
@@ -208,7 +208,7 @@ export default function CombosPage() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSave={handleCreate}
-        activeProviders={activeProviders}
+        availableModels={selectableModels}
       />
 
       {/* Edit Modal - Use key to force remount and reset state */}
@@ -218,7 +218,7 @@ export default function CombosPage() {
         combo={editingCombo}
         onClose={() => setEditingCombo(null)}
         onSave={(data) => handleUpdate(editingCombo.id, data)}
-        activeProviders={activeProviders}
+        availableModels={selectableModels}
       />
 
       {/* Confirm Delete Modal */}
@@ -240,7 +240,7 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, modelCaps = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, modelCaps = {}, availableModels = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -344,7 +344,7 @@ function ComboCard({ combo, modelCaps = {}, activeProviders = [], copied, onCopy
         isOpen={showJudgeSelect}
         onClose={() => setShowJudgeSelect(false)}
         onSelect={(m) => { onSetStrategy({ judgeModel: m?.value || "" }); setShowJudgeSelect(false); }}
-        activeProviders={activeProviders}
+        availableModels={availableModels}
         title="Select Judge Model"
         addedModelValues={judge ? [judge] : []}
         closeOnSelect={true}
@@ -451,14 +451,13 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
+function ComboFormModal({ isOpen, combo, onClose, onSave, availableModels = [], kindFilter = null }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
-  const [modelAliases, setModelAliases] = useState({});
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -478,21 +477,6 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
       }
     }
   };
-
-  const fetchModalData = async () => {
-    try {
-      const aliasesRes = await fetch("/api/models/alias");
-      if (!aliasesRes.ok) return;
-      const aliasesData = await aliasesRes.json();
-      setModelAliases(aliasesData.aliases || {});
-    } catch (error) {
-      console.error("Error fetching modal data:", error);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen) fetchModalData();
-  }, [isOpen]);
 
   const validateName = (value) => {
     if (!value.trim()) {
@@ -642,8 +626,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
         onClose={() => setShowModelSelect(false)}
         onSelect={handleAddModel}
         onDeselect={handleDeselectModel}
-        activeProviders={activeProviders}
-        modelAliases={modelAliases}
+        availableModels={availableModels}
         title="Add Model to Combo"
         kindFilter={kindFilter}
         addedModelValues={models}

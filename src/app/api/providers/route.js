@@ -111,16 +111,20 @@ export async function POST(request) {
     // Dual-auth providers (e.g. codebuddy-cn, xai) live under category "oauth" but also
     // accept an API key via authModes — they aren't in APIKEY_PROVIDERS, so allow them here.
     const supportsApiKeyMode = !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
+    const isCompatibleProvider = isOpenAICompatibleProvider(provider)
+      || isAnthropicCompatibleProvider(provider)
+      || isCustomEmbeddingProvider(provider);
     const isValidProvider = APIKEY_PROVIDERS[provider] ||
       FREE_TIER_PROVIDERS[provider] ||
       supportsApiKeyMode ||
       isWebCookieProvider ||
-      isOpenAICompatibleProvider(provider) ||
-      isAnthropicCompatibleProvider(provider) ||
-      isCustomEmbeddingProvider(provider);
+      isCompatibleProvider;
 
     if (!provider || !isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+    }
+    if (isCompatibleProvider && user.role !== "admin") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     if (!apiKey && provider !== "ollama-local") {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });

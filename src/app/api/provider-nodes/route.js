@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
+import { requireAdminUser } from "@/lib/auth/currentUser";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
 
@@ -17,12 +18,26 @@ const CUSTOM_EMBEDDING_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1",
 };
 
+function getAccessErrorResponse(error) {
+  if (error.message === "Unauthorized") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (error.message === "Forbidden") {
+    return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+  }
+  return null;
+}
+
 // GET /api/provider-nodes - List all provider nodes
 export async function GET() {
   try {
+    await requireAdminUser();
     const nodes = await getProviderNodes();
     return NextResponse.json({ nodes });
   } catch (error) {
+    const accessError = getAccessErrorResponse(error);
+    if (accessError) return accessError;
+
     console.log("Error fetching provider nodes:", error);
     return NextResponse.json({ error: "Failed to fetch provider nodes" }, { status: 500 });
   }
@@ -31,6 +46,7 @@ export async function GET() {
 // POST /api/provider-nodes - Create provider node
 export async function POST(request) {
   try {
+    await requireAdminUser();
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type } = body;
 
@@ -98,6 +114,9 @@ export async function POST(request) {
 
     return NextResponse.json({ error: "Invalid provider node type" }, { status: 400 });
   } catch (error) {
+    const accessError = getAccessErrorResponse(error);
+    if (accessError) return accessError;
+
     console.log("Error creating provider node:", error);
     return NextResponse.json({ error: "Failed to create provider node" }, { status: 500 });
   }

@@ -1,7 +1,29 @@
 import { NextResponse } from "next/server";
-import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
+import {
+  getCustomModels,
+  addCustomModel,
+  deleteCustomModel,
+} from "@/models";
+import { requireAdminUser } from "@/lib/auth/currentUser";
 
 export const dynamic = "force-dynamic";
+
+function getAccessErrorResponse(error) {
+  if (error.message === "Unauthorized") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (error.message === "Forbidden") {
+    return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+  }
+  return null;
+}
+
+async function requireCustomModelCatalogAdmin() {
+  // Custom-model records are a shared catalog, not connection-owned data.
+  // Restrict mutations to administrators for every provider so one dashboard
+  // user cannot alter models available to other users.
+  await requireAdminUser();
+}
 
 // GET /api/models/custom - List all custom models
 export async function GET() {
@@ -21,9 +43,13 @@ export async function POST(request) {
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
+    await requireCustomModelCatalogAdmin();
     const added = await addCustomModel({ providerAlias, id, type: type || "llm", name });
     return NextResponse.json({ success: true, added });
   } catch (error) {
+    const accessError = getAccessErrorResponse(error);
+    if (accessError) return accessError;
+
     console.log("Error adding custom model:", error);
     return NextResponse.json({ error: "Failed to add custom model" }, { status: 500 });
   }
@@ -39,9 +65,13 @@ export async function DELETE(request) {
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
+    await requireCustomModelCatalogAdmin();
     await deleteCustomModel({ providerAlias, id, type });
     return NextResponse.json({ success: true });
   } catch (error) {
+    const accessError = getAccessErrorResponse(error);
+    if (accessError) return accessError;
+
     console.log("Error deleting custom model:", error);
     return NextResponse.json({ error: "Failed to delete custom model" }, { status: 500 });
   }

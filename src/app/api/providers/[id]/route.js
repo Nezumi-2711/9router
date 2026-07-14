@@ -6,6 +6,21 @@ import {
   deleteProviderConnection,
 } from "@/models";
 import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
+import {
+  isAnthropicCompatibleProvider,
+  isCustomEmbeddingProvider,
+  isOpenAICompatibleProvider,
+} from "@/shared/constants/providers";
+
+function isAdministratorManagedProvider(provider) {
+  return isOpenAICompatibleProvider(provider)
+    || isAnthropicCompatibleProvider(provider)
+    || isCustomEmbeddingProvider(provider);
+}
+
+function canMutateConnection(user, connection) {
+  return !isAdministratorManagedProvider(connection.provider) || user.role === "admin";
+}
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -92,7 +107,7 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
-    const { ownerId } = await getProviderConnectionAccess();
+    const { user, ownerId } = await getProviderConnectionAccess();
     const body = await request.json();
     const {
       name,
@@ -110,6 +125,9 @@ export async function PUT(request, { params }) {
     const existing = await getProviderConnectionById(id, ownerId);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (!canMutateConnection(user, existing)) {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
 
     const proxyConfig = normalizeProxyConfig(body);
@@ -184,11 +202,14 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    const { ownerId } = await getProviderConnectionAccess();
+    const { user, ownerId } = await getProviderConnectionAccess();
 
     const existing = await getProviderConnectionById(id, ownerId);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+    if (!canMutateConnection(user, existing)) {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
 
     const deleted = await deleteProviderConnection(id);

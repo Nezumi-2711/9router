@@ -110,6 +110,7 @@ export default function ProvidersPage() {
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
   const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     registerSearch("Search providers...");
@@ -335,8 +336,10 @@ export default function ProvidersPage() {
     freeEntries.length > 0 ||
     freeTierEntries.length > 0 ||
     apikeyEntries.length > 0 ||
-    compatibleProviders.length > 0 ||
-    anthropicCompatibleProviders.length > 0;
+    (isAdmin && (
+      compatibleProviders.length > 0 ||
+      anthropicCompatibleProviders.length > 0
+    ));
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
@@ -349,7 +352,8 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
+      {/* Custom provider configuration is administered centrally. */}
+      {isAdmin && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
@@ -400,6 +404,7 @@ export default function ProvidersPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
@@ -577,7 +582,7 @@ export default function ProvidersPage() {
         </div>
       </div> */}
 
-      <AddCompatibleModal
+      {isAdmin && <AddCompatibleModal
         variant="openai"
         isOpen={showAddCompatibleModal}
         onClose={() => setShowAddCompatibleModal(false)}
@@ -585,8 +590,8 @@ export default function ProvidersPage() {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddCompatibleModal(false);
         }}
-      />
-      <AddCompatibleModal
+      />}
+      {isAdmin && <AddCompatibleModal
         variant="anthropic"
         isOpen={showAddAnthropicCompatibleModal}
         onClose={() => setShowAddAnthropicCompatibleModal(false)}
@@ -594,7 +599,7 @@ export default function ProvidersPage() {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddAnthropicCompatibleModal(false);
         }}
-      />
+      />}
 
       {/* Test Results Modal */}
       {testResults && (
