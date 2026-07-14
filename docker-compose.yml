@@ -8,6 +8,10 @@ services:
       dockerfile: Dockerfile
     image: 9router-app:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    # Dokploy/Traefik should route to this internal port. Do not publish it
+    # with `ports:`; public HTTP(S) is provided by the Dokploy domain router.
+    expose:
+      - "20128"
     volumes:
       - 9router-data:/app/data
     environment:
