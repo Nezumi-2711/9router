@@ -10,7 +10,7 @@ const GITLAB_DEFAULT_BASE = "https://gitlab.com";
  */
 export async function POST(request) {
   try {
-    const { user: dashboardUser } = await getProviderConnectionAccess();
+    const { user: dashboardUser } = await getProviderConnectionAccess(request);
     let body;
     try {
       body = await request.json();

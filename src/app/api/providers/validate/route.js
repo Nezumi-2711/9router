@@ -5,6 +5,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -83,6 +84,7 @@ async function probeMediaProvider(provider, apiKey) {
 // POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
   try {
+    await requireProviderAdministrator(request);
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;
@@ -628,6 +630,8 @@ export async function POST(request) {
       error: isValid ? null : (error || "Invalid API key"),
     });
   } catch (error) {
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     console.log("Error validating API key:", error);
     return NextResponse.json({ error: "Validation failed" }, { status: 500 });
   }

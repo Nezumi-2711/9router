@@ -70,7 +70,7 @@ async function completeXaiManualCode(code, state, ownerId) {
 // GET /api/oauth/[provider]/device-code - Request device code (for device_code flow)
 export async function GET(request, { params }) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { provider, action } = await params;
     const { searchParams } = new URL(request.url);
 
@@ -184,6 +184,9 @@ export async function GET(request, { params }) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    }
     console.log("OAuth GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -193,7 +196,7 @@ export async function GET(request, { params }) {
 // POST /api/oauth/[provider]/poll - Poll for token (device_code flow)
 export async function POST(request, { params }) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { provider, action } = await params;
     let body;
     try {
@@ -361,6 +364,9 @@ export async function POST(request, { params }) {
   } catch (error) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     console.log("OAuth POST error:", error);
     return NextResponse.json({ error: error.message }, { status: error.status || 500 });

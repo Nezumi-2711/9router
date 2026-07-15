@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { FILTERS } from "./filters.js";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
+  try {
+    await requireProviderAdministrator(request);
+  } catch (error) {
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    return NextResponse.json({ error: "Failed to authenticate user" }, { status: 500 });
+  }
+
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url");
   const type = searchParams.get("type");

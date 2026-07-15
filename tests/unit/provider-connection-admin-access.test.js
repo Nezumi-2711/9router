@@ -30,7 +30,7 @@ const adminAccess = {
   ownerId: null,
 };
 
-describe("provider connection administrator-managed access", () => {
+describe("provider connection administrator-only access", () => {
   beforeEach(() => {
     getProviderConnectionById.mockReset();
     getProxyPoolById.mockReset();
@@ -39,7 +39,7 @@ describe("provider connection administrator-managed access", () => {
     getProviderConnectionAccess.mockReset();
   });
 
-  it("prevents a member from updating their legacy compatible connection", async () => {
+  it("prevents a member from updating a provider connection", async () => {
     getProviderConnectionAccess.mockResolvedValue(memberAccess);
     getProviderConnectionById.mockResolvedValue({
       id: "legacy-compatible",
@@ -56,7 +56,7 @@ describe("provider connection administrator-managed access", () => {
     expect(updateProviderConnection).not.toHaveBeenCalled();
   });
 
-  it("prevents a member from deleting their legacy compatible connection", async () => {
+  it("prevents a member from deleting a provider connection", async () => {
     getProviderConnectionAccess.mockResolvedValue(memberAccess);
     getProviderConnectionById.mockResolvedValue({
       id: "legacy-compatible",
@@ -89,7 +89,7 @@ describe("provider connection administrator-managed access", () => {
     expect(deleteProviderConnection).toHaveBeenCalledWith("compatible");
   });
 
-  it("preserves member control over their non-compatible connection", async () => {
+  it("prevents a member from updating a non-compatible connection", async () => {
     getProviderConnectionAccess.mockResolvedValue(memberAccess);
     getProviderConnectionById.mockResolvedValue({
       id: "openai-connection",
@@ -98,21 +98,12 @@ describe("provider connection administrator-managed access", () => {
       providerSpecificData: {},
       authType: "apikey",
     });
-    updateProviderConnection.mockResolvedValue({
-      id: "openai-connection",
-      provider: "openai",
-      name: "Changed",
-    });
-
     const response = await PUT(new Request("http://localhost/api/providers/openai-connection", {
       method: "PUT",
       body: JSON.stringify({ name: "Changed" }),
     }), { params: Promise.resolve({ id: "openai-connection" }) });
 
-    expect(response.status).toBe(200);
-    expect(updateProviderConnection).toHaveBeenCalledWith("openai-connection", {
-      name: "Changed",
-      providerSpecificData: {},
-    });
+    expect(response.status).toBe(403);
+    expect(updateProviderConnection).not.toHaveBeenCalled();
   });
 });

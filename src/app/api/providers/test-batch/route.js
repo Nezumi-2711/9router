@@ -43,7 +43,7 @@ function isCompatibleProvider(providerId) {
 // POST /api/providers/test-batch - Test multiple connections by group
 export async function POST(request) {
   try {
-    const { ownerId } = await getProviderConnectionAccess();
+    const { ownerId } = await getProviderConnectionAccess(request);
     const body = await request.json();
     const { mode, providerId } = body;
 
@@ -132,6 +132,9 @@ export async function POST(request) {
   } catch (error) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     console.log("Error in batch test:", error);
     return NextResponse.json({ error: "Batch test failed" }, { status: 500 });

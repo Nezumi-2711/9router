@@ -26,8 +26,6 @@ describe("API-key credential access", () => {
     const db = await import("@/lib/db/index.js");
     const { getProviderCredentials } = await import("@/sse/services/auth.js");
     const admin = await db.createUser({ username: "credential-admin", password: "password", role: "admin" });
-    const userA = await db.createUser({ username: "credential-user-a", password: "password", role: "user" });
-    const userB = await db.createUser({ username: "credential-user-b", password: "password", role: "user" });
     const userC = await db.createUser({ username: "credential-user-c", password: "password", role: "user" });
     const adminConnection = await db.createProviderConnection({
       provider: "antigravity",
@@ -36,19 +34,21 @@ describe("API-key credential access", () => {
       accessToken: "admin-token",
       ownerId: admin.id,
     });
+    const secondAdmin = await db.createUser({ username: "credential-admin-two", password: "password", role: "admin" });
+    const thirdAdmin = await db.createUser({ username: "credential-admin-three", password: "password", role: "admin" });
     const userAConnection = await db.createProviderConnection({
       provider: "antigravity",
       authType: "oauth",
-      name: "user-a-antigravity",
-      accessToken: "user-a-token",
-      ownerId: userA.id,
+      name: "second-admin-antigravity",
+      accessToken: "second-admin-token",
+      ownerId: secondAdmin.id,
     });
     const userBConnection = await db.createProviderConnection({
       provider: "antigravity",
       authType: "oauth",
-      name: "user-b-antigravity",
-      accessToken: "user-b-token",
-      ownerId: userB.id,
+      name: "third-admin-antigravity",
+      accessToken: "third-admin-token",
+      ownerId: thirdAdmin.id,
     });
 
     const firstCredentials = await getProviderCredentials("antigravity", new Set(), "gemini-2.5-pro", {

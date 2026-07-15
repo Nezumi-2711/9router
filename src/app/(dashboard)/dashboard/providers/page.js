@@ -22,7 +22,6 @@ import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
-import useUserStore from "@/store/userStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 
@@ -106,12 +105,9 @@ export default function ProvidersPage() {
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
   const notify = useNotificationStore();
-  const user = useUserStore((state) => state.user);
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
   const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
-  const isAdmin = user?.role === "admin";
-
   useEffect(() => {
     registerSearch("Search providers...");
     return () => unregisterSearch();
@@ -287,7 +283,6 @@ export default function ProvidersPage() {
     .filter(
       ([, info]) =>
         !info.hidden &&
-        (user?.role === "admin" || !info.noAuth) &&
         matchSearch(info.name),
     )
     .sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
@@ -295,7 +290,6 @@ export default function ProvidersPage() {
     Object.entries(FREE_TIER_PROVIDERS).filter(
       ([, info]) =>
         !info.hidden &&
-        (user?.role === "admin" || !info.noAuth) &&
         matchSearch(info.name) &&
         (info.serviceKinds ?? ["llm"]).includes("llm"),
     ),
@@ -336,10 +330,10 @@ export default function ProvidersPage() {
     freeEntries.length > 0 ||
     freeTierEntries.length > 0 ||
     apikeyEntries.length > 0 ||
-    (isAdmin && (
+    (
       compatibleProviders.length > 0 ||
       anthropicCompatibleProviders.length > 0
-    ));
+    );
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
@@ -353,7 +347,6 @@ export default function ProvidersPage() {
       )}
 
       {/* Custom provider configuration is administered centrally. */}
-      {isAdmin && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
@@ -404,7 +397,6 @@ export default function ProvidersPage() {
           </div>
         )}
       </div>
-      )}
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
@@ -582,7 +574,7 @@ export default function ProvidersPage() {
         </div>
       </div> */}
 
-      {isAdmin && <AddCompatibleModal
+      <AddCompatibleModal
         variant="openai"
         isOpen={showAddCompatibleModal}
         onClose={() => setShowAddCompatibleModal(false)}
@@ -590,8 +582,8 @@ export default function ProvidersPage() {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddCompatibleModal(false);
         }}
-      />}
-      {isAdmin && <AddCompatibleModal
+      />
+      <AddCompatibleModal
         variant="anthropic"
         isOpen={showAddAnthropicCompatibleModal}
         onClose={() => setShowAddAnthropicCompatibleModal(false)}
@@ -599,7 +591,7 @@ export default function ProvidersPage() {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddAnthropicCompatibleModal(false);
         }}
-      />}
+      />
 
       {/* Test Results Modal */}
       {testResults && (

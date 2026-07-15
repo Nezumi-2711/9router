@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
-import { requireAdminUser } from "@/lib/auth/currentUser";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
 
@@ -29,9 +29,9 @@ function getAccessErrorResponse(error) {
 }
 
 // GET /api/provider-nodes - List all provider nodes
-export async function GET() {
+export async function GET(request) {
   try {
-    await requireAdminUser();
+    await requireProviderAdministrator(request);
     const nodes = await getProviderNodes();
     return NextResponse.json({ nodes });
   } catch (error) {
@@ -46,7 +46,7 @@ export async function GET() {
 // POST /api/provider-nodes - Create provider node
 export async function POST(request) {
   try {
-    await requireAdminUser();
+    await requireProviderAdministrator(request);
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type } = body;
 

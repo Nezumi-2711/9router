@@ -6,20 +6,8 @@ import {
   deleteProviderConnection,
 } from "@/models";
 import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
-import {
-  isAnthropicCompatibleProvider,
-  isCustomEmbeddingProvider,
-  isOpenAICompatibleProvider,
-} from "@/shared/constants/providers";
-
-function isAdministratorManagedProvider(provider) {
-  return isOpenAICompatibleProvider(provider)
-    || isAnthropicCompatibleProvider(provider)
-    || isCustomEmbeddingProvider(provider);
-}
-
 function canMutateConnection(user, connection) {
-  return !isAdministratorManagedProvider(connection.provider) || user.role === "admin";
+  return user.role === "admin";
 }
 
 function normalizeProxyConfig(body = {}) {
@@ -79,7 +67,7 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const { ownerId } = await getProviderConnectionAccess();
+    const { ownerId } = await getProviderConnectionAccess(request);
     const connection = await getProviderConnectionById(id, ownerId);
 
     if (!connection) {
@@ -98,6 +86,9 @@ export async function GET(request, { params }) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    }
     console.log("Error fetching connection:", error);
     return NextResponse.json({ error: "Failed to fetch connection" }, { status: 500 });
   }
@@ -107,7 +98,7 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
-    const { user, ownerId } = await getProviderConnectionAccess();
+    const { user, ownerId } = await getProviderConnectionAccess(request);
     const body = await request.json();
     const {
       name,
@@ -193,6 +184,9 @@ export async function PUT(request, { params }) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    }
     console.log("Error updating connection:", error);
     return NextResponse.json({ error: "Failed to update connection" }, { status: 500 });
   }
@@ -202,7 +196,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    const { user, ownerId } = await getProviderConnectionAccess();
+    const { user, ownerId } = await getProviderConnectionAccess(request);
 
     const existing = await getProviderConnectionById(id, ownerId);
     if (!existing) {
@@ -221,6 +215,9 @@ export async function DELETE(request, { params }) {
   } catch (error) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     console.log("Error deleting connection:", error);
     return NextResponse.json({ error: "Failed to delete connection" }, { status: 500 });

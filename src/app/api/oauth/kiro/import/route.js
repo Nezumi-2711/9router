@@ -11,7 +11,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
  */
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();
 
     if (!refreshToken || typeof refreshToken !== "string") {

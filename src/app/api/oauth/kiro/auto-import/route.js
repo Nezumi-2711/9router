@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 import { readFile, readdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -9,8 +10,9 @@ import { join } from "path";
  * For IDC (organization) tokens, also resolves clientId/clientSecret from the
  * linked client registration file so token refresh works.
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    await requireProviderAdministrator(request);
     const cachePath = join(homedir(), ".aws/sso/cache");
 
     let files;
@@ -123,6 +125,8 @@ export async function GET() {
       profileArn,
     });
   } catch (error) {
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     console.log("Kiro auto-import error:", error);
     return NextResponse.json(
       { found: false, error: error.message },

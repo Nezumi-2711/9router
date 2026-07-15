@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 
 const KILO_MODELS_URL = "https://api.kilo.ai/api/gateway/models";
 
@@ -8,6 +9,14 @@ let cacheTimestamp = 0;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export async function GET() {
+  try {
+    await requireProviderAdministrator(request);
+  } catch (error) {
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    return NextResponse.json({ error: "Failed to authenticate user" }, { status: 500 });
+  }
+
   const now = Date.now();
 
   // Return cached result if still valid

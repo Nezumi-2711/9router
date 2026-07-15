@@ -157,6 +157,14 @@ function reorderInTx(db, providerId) {
 
 export async function createProviderConnection(data) {
   const db = await getAdapter();
+  const owner = data.ownerId
+    ? db.get(`SELECT id, role FROM users WHERE id = ?`, [data.ownerId])
+    : null;
+  if (!owner || owner.role !== "admin") {
+    const error = new Error("Provider connections require an administrator owner");
+    error.status = 403;
+    throw error;
+  }
   const now = new Date().toISOString();
   let result;
 
@@ -208,6 +216,11 @@ export async function createProviderConnection(data) {
   });
 
   return result;
+}
+
+export async function countProviderConnectionsByOwnerId(ownerId) {
+  const db = await getAdapter();
+  return db.get(`SELECT COUNT(*) AS count FROM providerConnections WHERE ownerId = ?`, [ownerId])?.count || 0;
 }
 
 // Critical: OAuth refresh token race — atomic merge inside transaction

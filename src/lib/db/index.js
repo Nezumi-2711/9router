@@ -18,7 +18,7 @@ export {
   getProviderConnections, getProviderConnectionById,
   createProviderConnection, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
-  reorderProviderConnections, cleanupProviderConnections,
+  reorderProviderConnections, cleanupProviderConnections, countProviderConnectionsByOwnerId,
 } from "./repos/connectionsRepo.js";
 
 // Provider nodes
@@ -146,9 +146,14 @@ export async function importDb(payload) {
       }
     }
 
+    const adminOwnerIds = new Set(
+      db.all(`SELECT id FROM users WHERE role = 'admin'`).map((user) => user.id),
+    );
     const fallbackOwnerId = db.get(`SELECT id FROM users WHERE role = 'admin' ORDER BY createdAt ASC LIMIT 1`)?.id || null;
+    if (!fallbackOwnerId) throw new Error("Database import requires an administrator owner for provider connections");
     for (const c of payload.providerConnections || []) {
       const { id, provider, authType, name, email, ownerId, priority, isActive, createdAt, updatedAt, ...rest } = c;
+      if (ownerId && !adminOwnerIds.has(ownerId)) continue;
       db.run(
         `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, ownerId, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, provider, authType || "oauth", name || null, email || null, ownerId || fallbackOwnerId, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]

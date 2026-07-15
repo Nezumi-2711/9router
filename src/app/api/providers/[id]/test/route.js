@@ -7,7 +7,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
-    const { ownerId } = await getProviderConnectionAccess();
+    const { ownerId } = await getProviderConnectionAccess(request);
     const connection = await getProviderConnectionById(id, ownerId);
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -26,6 +26,9 @@ export async function POST(request, { params }) {
   } catch (error) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     console.log("Error testing connection:", error);
     return NextResponse.json({ error: "Test failed" }, { status: 500 });

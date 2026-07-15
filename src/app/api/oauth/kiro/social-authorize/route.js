@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generatePKCE } from "@/lib/oauth/utils/pkce";
 import { KiroService } from "@/lib/oauth/services/kiro";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 
 /**
  * GET /api/oauth/kiro/social-authorize
@@ -9,6 +10,7 @@ import { KiroService } from "@/lib/oauth/services/kiro";
  */
 export async function GET(request) {
   try {
+    await requireProviderAdministrator(request);
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get("provider"); // "google" or "github"
 
@@ -37,6 +39,8 @@ export async function GET(request) {
       provider,
     });
   } catch (error) {
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     console.log("Kiro social authorize error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

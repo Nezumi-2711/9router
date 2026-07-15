@@ -77,7 +77,7 @@ function sortConnections(connections, sort) {
 
 export async function GET(request) {
   try {
-    const { ownerId } = await getProviderConnectionAccess();
+    const { ownerId } = await getProviderConnectionAccess(request);
     await backfillCodexEmails();
 
     const { searchParams } = new URL(request.url);
@@ -125,6 +125,9 @@ export async function GET(request) {
   } catch (error) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     console.log("Error fetching providers for client:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });

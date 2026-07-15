@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
-import { requireCurrentDashboardUser } from "@/lib/auth/currentUser";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 
 /**
  * POST /api/oauth/codex/bulk-import
@@ -20,11 +20,10 @@ import { requireCurrentDashboardUser } from "@/lib/auth/currentUser";
 export async function POST(request) {
   let user;
   try {
-    user = await requireCurrentDashboardUser();
+    user = await requireProviderAdministrator(request);
   } catch (error) {
-    if (error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     return NextResponse.json({ error: "Failed to authenticate user" }, { status: 500 });
   }
 

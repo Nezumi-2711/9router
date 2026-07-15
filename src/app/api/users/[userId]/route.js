@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { countActiveAdmins, deleteUser, getUserById, updateUser } from "@/lib/db";
+import { countActiveAdmins, countProviderConnectionsByOwnerId, deleteUser, getUserById, updateUser } from "@/lib/db";
 import { requireCurrentDashboardUser } from "@/lib/auth/currentUser";
 
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
@@ -25,6 +25,12 @@ function wouldRemoveLastActiveAdmin(target, updates, activeAdminCount) {
   return (nextRole !== "admin" || !nextActive) && activeAdminCount <= 1;
 }
 
+function wouldDemoteAdmin(target, updates) {
+  return target.role === "admin"
+    && Object.hasOwn(updates, "role")
+    && updates.role !== "admin";
+}
+
 export async function PATCH(request, { params }) {
   try {
     const actor = await requireCurrentDashboardUser();
@@ -47,6 +53,9 @@ export async function PATCH(request, { params }) {
     if (wouldRemoveLastActiveAdmin(target, updates, await countActiveAdmins())) {
       throw new Error("At least one active administrator is required");
     }
+    if (wouldDemoteAdmin(target, updates) && await countProviderConnectionsByOwnerId(target.id) > 0) {
+      throw new Error("Delete this administrator's provider connections before changing their role");
+    }
 
     const user = await updateUser(target.id, updates);
     return NextResponse.json({ user }, { headers: NO_STORE_HEADERS });
@@ -64,6 +73,9 @@ export async function DELETE(request, { params }) {
     if (target.id === actor.id) throw new Error("You cannot delete your own account");
     if (target.role === "admin" && target.isActive && await countActiveAdmins() <= 1) {
       throw new Error("At least one active administrator is required");
+    }
+    if (target.role === "admin" && await countProviderConnectionsByOwnerId(target.id) > 0) {
+      throw new Error("Delete this administrator's provider connections before deleting their account");
     }
 
     await deleteUser(target.id);

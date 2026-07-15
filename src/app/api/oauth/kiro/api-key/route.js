@@ -11,7 +11,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
  */
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { apiKey, region } = await request.json();
 
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {

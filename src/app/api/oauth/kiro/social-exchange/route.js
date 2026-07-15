@@ -10,7 +10,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
  */
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { code, codeVerifier, provider } = await request.json();
 
     if (!code || !codeVerifier) {

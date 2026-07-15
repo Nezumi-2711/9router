@@ -10,7 +10,6 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
-import useUserStore from "@/store/userStore";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
@@ -39,7 +38,6 @@ export default function ProviderDetailPage() {
   const router = useRouter();
   const providerId = params.id;
   const { getCaps } = useModelCaps();
-  const user = useUserStore((state) => state.user);
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
@@ -80,8 +78,6 @@ export default function ProviderDetailPage() {
   const stopOneByOneRef = useRef(false);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
   const { copied, copy } = useCopyToClipboard();
-
-  const canManageModelAvailability = user?.role === "admin";
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -1121,7 +1117,7 @@ export default function ProviderDetailPage() {
               onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
-              onDisable={canManageModelAvailability ? () => handleDisableModel(model.id) : undefined}
+              onDisable={() => handleDisableModel(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
@@ -1185,7 +1181,7 @@ export default function ProviderDetailPage() {
         })()}
 
         {/* Disabled models — restorable */}
-        {canManageModelAvailability && disabledDisplayModels.length > 0 && (
+        {disabledDisplayModels.length > 0 && (
           <div className="w-full mt-2">
             <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
@@ -1616,7 +1612,7 @@ export default function ProviderDetailPage() {
               </select>
             )}
           </div>
-          {canManageModelAvailability && !isCompatible && (() => {
+          {!isCompatible && (() => {
             const allIds = [
               ...models,
               ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),

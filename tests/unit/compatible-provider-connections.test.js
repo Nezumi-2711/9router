@@ -8,6 +8,8 @@ const originalDataDir = process.env.DATA_DIR;
 async function setupTestContext(nodeData) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-compatible-provider-"));
   process.env.DATA_DIR = tempDir;
+  try { global._dbAdapter?.instance?.close?.(); } catch {}
+  delete global._dbAdapter;
   vi.resetModules();
   vi.doMock("next/server", () => ({
     NextResponse: {
@@ -19,12 +21,16 @@ async function setupTestContext(nodeData) {
       },
     },
   }));
-
-  const { POST } = await import("@/app/api/providers/route.js");
   const {
     createProviderNode,
     getProviderConnections,
   } = await import("@/models/index.js");
+  const { createUser } = await import("@/lib/db/index.js");
+  const admin = await createUser({ username: "provider-admin", password: "password", role: "admin" });
+  vi.doMock("@/lib/providers/connectionAccess", () => ({
+    getProviderConnectionAccess: vi.fn().mockResolvedValue({ user: admin, ownerId: null }),
+  }));
+  const { POST } = await import("@/app/api/providers/route.js");
 
   const node = await createProviderNode(nodeData);
 
@@ -38,13 +44,13 @@ async function setupTestContext(nodeData) {
   };
 }
 
-function makeRequest(provider, name = "Test Connection") {
+function makeRequest(provider, name = "Test Connection", apiKey = "test-key") {
   return new Request("https://9router.local/api/providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       provider,
-      apiKey: "test-key",
+      apiKey,
       name,
       defaultModel: "test-model",
     }),
@@ -74,6 +80,8 @@ describe("compatible provider connections API", () => {
   });
 
   afterEach(() => {
+    try { global._dbAdapter?.instance?.close?.(); } catch {}
+    delete global._dbAdapter;
     vi.doUnmock("next/server");
     vi.resetModules();
     vi.clearAllMocks();
@@ -157,7 +165,7 @@ describe("compatible provider connections API", () => {
     cleanup = ctx.cleanup;
 
     const firstResponse = await ctx.POST(makeRequest(ctx.node.id, "Key A"));
-    const secondResponse = await ctx.POST(makeRequest(ctx.node.id, "Key B"));
+    const secondResponse = await ctx.POST(makeRequest(ctx.node.id, "Key B", "test-key-b"));
     const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
 
     expect(firstResponse.status).toBe(201);

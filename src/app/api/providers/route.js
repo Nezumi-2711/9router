@@ -48,9 +48,9 @@ async function normalizeProxyPoolId(proxyPoolId) {
 }
 
 // GET /api/providers - List all connections
-export async function GET() {
+export async function GET(request) {
   try {
-    const { ownerId } = await getProviderConnectionAccess();
+    const { ownerId } = await getProviderConnectionAccess(request);
     const connections = await getProviderConnections(ownerId ? { ownerId } : {});
 
     // Build nodeNameMap for compatible providers (id → name)
@@ -83,6 +83,9 @@ export async function GET() {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+    }
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
   }
@@ -91,7 +94,7 @@ export async function GET() {
 // POST /api/providers - Create new connection (API Key only, OAuth via separate flow)
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
@@ -204,6 +207,9 @@ export async function POST(request) {
   } catch (error) {
     if (error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (error.message === "Forbidden") {
+      return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     }
     console.log("Error creating provider:", error);
     return NextResponse.json(

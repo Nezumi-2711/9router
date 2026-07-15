@@ -340,6 +340,52 @@ describe("dashboard guard token saver administration access", () => {
   });
 });
 
+describe("dashboard guard provider administration access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({});
+    mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "user" });
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.getDashboardAuthSession.mockResolvedValue({ userId: "user-1" });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+  });
+
+  it("rejects normal users from provider pages and management APIs", async () => {
+    for (const pathname of [
+      "/api/providers",
+      "/api/providers/connection-id/test",
+      "/api/provider-nodes",
+      "/api/oauth/codex/authorize",
+    ]) {
+      const response = await proxy(request(pathname, { host: "localhost:20128" }, "user-token"));
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe("Administrator access required");
+    }
+
+    for (const pathname of ["/dashboard/providers", "/dashboard/providers/openai"]) {
+      const response = await proxy(request(pathname, { host: "localhost:20128" }, "user-token"));
+
+      expect(response.status).toBe(307);
+      expect(response.url.href).toBe("http://localhost/dashboard");
+    }
+  });
+
+  it("allows administrators to access provider pages and APIs", async () => {
+    mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "admin" });
+
+    for (const pathname of [
+      "/dashboard/providers",
+      "/dashboard/providers/openai",
+      "/api/providers",
+      "/api/provider-nodes",
+      "/api/oauth/codex/authorize",
+    ]) {
+      expect(await proxy(request(pathname, { host: "localhost:20128" }, "admin-token"))).toBe(mocks.nextResponse);
+    }
+  });
+});
+
 describe("dashboard guard helpers", () => {
   it("extracts bearer API keys before x-api-key", () => {
     const apiRequest = request("/v1/chat/completions", {

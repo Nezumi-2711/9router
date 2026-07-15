@@ -9,7 +9,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
  */
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { cookie } = await request.json();
 
     if (!cookie || typeof cookie !== "string") {

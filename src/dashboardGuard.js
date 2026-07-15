@@ -12,7 +12,7 @@ async function getCliToken() {
   return cachedCliToken;
 }
 
-async function hasValidCliToken(request) {
+export async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
   return token === await getCliToken();
@@ -44,6 +44,9 @@ const ALWAYS_PROTECTED = [
 // is disabled for local single-user deployments.
 const ADMIN_ONLY_PATHS = [
   "/api/users",
+  "/api/providers",
+  "/api/provider-nodes",
+  "/api/oauth",
   "/api/tunnel",
   "/api/headroom",
   "/api/pxpipe",
@@ -55,6 +58,7 @@ const ADMIN_ONLY_PATHS = [
 // Dashboard paths requiring an administrator. Combo access is handled by its
 // owner-scoped API routes and is available to authenticated users.
 const ADMIN_ONLY_DASHBOARD_PATHS = [
+  "/dashboard/providers",
   "/dashboard/token-saver",
   "/dashboard/pxpipe",
   "/dashboard/media-providers",
@@ -234,13 +238,6 @@ export async function proxy(request) {
     }
   }
 
-  // Always protected - require valid JWT or local CLI token (machineId-based)
-  if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    if (await hasValidCliToken(request) || await hasValidToken(request))
-      return NextResponse.next();
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   if (isPublicLlmApi(pathname)) {
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
@@ -249,6 +246,13 @@ export async function proxy(request) {
   if (ADMIN_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     if (await hasValidCliToken(request) || await isAdmin(request)) return NextResponse.next();
     return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
+  }
+
+  // Always protected - require valid JWT or local CLI token (machineId-based)
+  if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
+    if (await hasValidCliToken(request) || await hasValidToken(request))
+      return NextResponse.next();
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.

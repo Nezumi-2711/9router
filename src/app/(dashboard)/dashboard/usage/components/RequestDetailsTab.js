@@ -17,13 +17,13 @@ async function fetchProviderNames() {
     return { providerNameCache, providerNodesCache };
   }
 
-  const nodesRes = await fetch("/api/provider-nodes");
-  const nodesData = await nodesRes.json();
-  const nodes = nodesData.nodes || [];
+  const topologyRes = await fetch("/api/usage/topology-providers");
+  const topologyData = topologyRes.ok ? await topologyRes.json() : {};
+  const nodes = topologyData.providers || [];
   providerNodesCache = {};
 
   for (const node of nodes) {
-    providerNodesCache[node.id] = node.name;
+    providerNodesCache[node.provider] = node.nodeName || node.name || node.provider;
   }
 
   providerNameCache = {

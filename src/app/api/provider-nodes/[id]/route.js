@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
-import { requireAdminUser } from "@/lib/auth/currentUser";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 
 function getAccessErrorResponse(error) {
   if (error.message === "Unauthorized") {
@@ -15,7 +15,7 @@ function getAccessErrorResponse(error) {
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
   try {
-    await requireAdminUser();
+    await requireProviderAdministrator(request);
     const { id } = await params;
     const body = await request.json();
     const { name, prefix, apiType, baseUrl } = body;
@@ -98,7 +98,7 @@ export async function PUT(request, { params }) {
 // DELETE /api/provider-nodes/[id] - Delete provider node and its connections
 export async function DELETE(request, { params }) {
   try {
-    await requireAdminUser();
+    await requireProviderAdministrator(request);
     const { id } = await params;
     const node = await getProviderNodeById(id);
 

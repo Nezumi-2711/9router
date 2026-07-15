@@ -138,7 +138,7 @@ Main flow modules:
 Primary state DB:
 
 - `src/lib/localDb.js`
-- file: `${DATA_DIR}/db.json` (or `~/.9router/db.json` when `DATA_DIR` is unset)
+- file: `${DATA_DIR}/db/data.sqlite` (or `~/.9router/db/data.sqlite` when `DATA_DIR` is unset)
 - entities: providerConnections, providerNodes, modelAliases, combos, apiKeys, settings, pricing
 
 Usage DB:
@@ -151,7 +151,8 @@ Usage DB:
 
 - Dashboard cookie auth: `src/proxy.js`, `src/app/api/auth/login/route.js`
 - API key generation/verification: `src/shared/utils/apiKey.js`
-- Provider secrets persisted in `providerConnections` entries
+- Provider secrets persisted in `providerConnections` entries. Provider management is administrator-only: regular users cannot access the Providers dashboard or provider/OAuth management APIs, but their API keys route through the shared active administrator credential pool.
+- Schema migration 007 deletes legacy provider connections owned by regular users or missing users, and assigns legacy ownerless connections to the first administrator.
 - Optional proxy support for upstream calls via env proxy variables (`open-sse/utils/proxyFetch.js`)
 
 ## 5) Cloud Sync

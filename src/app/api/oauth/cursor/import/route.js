@@ -13,7 +13,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
  */
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const { accessToken, machineId } = await request.json();
 
     if (!accessToken || typeof accessToken !== "string") {

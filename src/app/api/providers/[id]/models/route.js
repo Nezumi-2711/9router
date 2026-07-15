@@ -394,7 +394,7 @@ const PROVIDER_MODELS_CONFIG = {
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const { ownerId } = await getProviderConnectionAccess();
+    const { ownerId } = await getProviderConnectionAccess(request);
     const connection = await getProviderConnectionById(id, ownerId);
 
     if (!connection) {

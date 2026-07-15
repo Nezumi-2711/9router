@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
 import { access, constants } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
@@ -174,8 +175,9 @@ async function extractTokensViaCLI(dbPath) {
  * Auto-detect and extract Cursor tokens from local SQLite database.
  * Strategy: better-sqlite3 → sqlite3 CLI → manual fallback
  */
-export async function GET() {
+export async function GET(request) {
   try {
+    await requireProviderAdministrator(request);
     const platform = process.platform;
     const candidates = getCandidatePaths(platform);
 
@@ -249,6 +251,8 @@ export async function GET() {
     // Strategy 3: ask user to paste manually
     return NextResponse.json({ found: false, windowsManual: true, dbPath });
   } catch (error) {
+    if (error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error.message === "Forbidden") return NextResponse.json({ error: "Administrator access required" }, { status: 403 });
     console.log("Cursor auto-import error:", error);
     return NextResponse.json(
       { found: false, error: error.message },

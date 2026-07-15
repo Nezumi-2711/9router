@@ -9,7 +9,7 @@ import { getProviderConnectionAccess } from "@/lib/providers/connectionAccess";
  */
 export async function POST(request) {
   try {
-    const { user } = await getProviderConnectionAccess();
+    const { user } = await getProviderConnectionAccess(request);
     const body = await request.json();
     const rawAuth = body?.cliProxyAuth ?? body?.auth ?? body?.json ?? body;
     const tokenData = normalizeKiroExternalIdpAuth(rawAuth);
