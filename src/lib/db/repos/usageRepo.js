@@ -5,7 +5,6 @@ import { getMeta, setMeta } from "../helpers/metaStore.js";
 import { appendUsageAccessClause, getUsageAccessScope } from "./usageAccessScope.js";
 import {
   formatVietnamDateTime,
-  formatVietnamTime,
   getVietnamDateKey,
   getVietnamStartOfDay,
   shiftVietnamDateKey,
@@ -896,7 +895,7 @@ function buildChartDataFromRows(rows, period) {
     ? getVietnamStartOfDay().getTime()
     : isHourly ? now - bucketCount * bucketMs : new Date(`${shiftVietnamDateKey(getVietnamDateKey(), -(bucketCount - 1))}T00:00:00+07:00`).getTime();
   const labelFn = isHourly
-    ? (timestamp) => formatVietnamTime(timestamp, { hour: "2-digit", minute: "2-digit" })
+    ? (timestamp) => formatVietnamDateTime(timestamp, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
     : (timestamp) => formatVietnamDateTime(timestamp, { month: "short", day: "numeric" });
   const buckets = Array.from({ length: bucketCount }, (_, index) => ({ label: labelFn(startTime + index * bucketMs), tokens: 0, cost: 0 }));
 
@@ -935,7 +934,7 @@ export async function getChartData(period = "7d", user = null) {
     const bucketMs = 3600000;
     const startTime = getVietnamStartOfDay().getTime();
     const endTime = startTime + bucketCount * bucketMs;
-    const labelFn = (ts) => formatVietnamTime(ts, { hour: "2-digit", minute: "2-digit" });
+    const labelFn = (ts) => formatVietnamDateTime(ts, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
     const rows = db.all(
@@ -957,7 +956,7 @@ export async function getChartData(period = "7d", user = null) {
   if (period === "24h") {
     const bucketCount = 24;
     const bucketMs = 3600000;
-    const labelFn = (ts) => formatVietnamTime(ts, { hour: "2-digit", minute: "2-digit" });
+    const labelFn = (ts) => formatVietnamDateTime(ts, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     const startTime = now - bucketCount * bucketMs;
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({ label: labelFn(startTime + i * bucketMs), tokens: 0, cost: 0 }));
 
