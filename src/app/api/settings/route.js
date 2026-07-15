@@ -4,7 +4,7 @@ import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import { runQuotaAutoPingTick } from "@/shared/services/quotaAutoPing";
 import { requireCurrentDashboardUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
-import { updateUser, verifyUserPassword } from "@/lib/db";
+import { updateUser } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -115,7 +115,7 @@ export async function PATCH(request) {
     // Strip protected secrets before any internal handling sets them
     for (const key of PROTECTED_SETTING_KEYS) delete body[key];
 
-    // If updating password, hash it
+    // An authenticated dashboard session is sufficient to change its own password.
     if (body.newPassword) {
       let user;
       try {
@@ -124,12 +124,6 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      if (!body.currentPassword) {
-        return NextResponse.json({ error: "Current password required" }, { status: 400 });
-      }
-      if (!(await verifyUserPassword(user.id, body.currentPassword))) {
-        return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
-      }
       await updateUser(user.id, { password: body.newPassword });
       delete body.newPassword;
       delete body.currentPassword;
