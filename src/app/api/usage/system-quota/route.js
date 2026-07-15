@@ -60,6 +60,18 @@ function sanitizeProviderError(error) {
   return "Quota data is temporarily unavailable for this provider.";
 }
 
+function hideQuotaResetDetails(data, user) {
+  if (user.role === "admin") return data;
+
+  return {
+    ...data,
+    providers: data.providers.map((provider) => ({
+      ...provider,
+      quotas: provider.quotas.map(({ resetAt: _resetAt, recurring: _recurring, ...quota }) => quota),
+    })),
+  };
+}
+
 function buildSystemQuotaResponse(connections, results) {
   const providerGroups = new Map();
 
@@ -170,14 +182,14 @@ async function fetchConnectionQuota(connection) {
  */
 export async function GET(request) {
   try {
-    await requireUsageDashboardUser();
+    const user = await requireUsageDashboardUser();
 
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get("refresh") === "true";
     const cacheIsFresh = cachedSystemQuota && Date.now() - cachedSystemQuota.cachedAt < CACHE_TTL_MS;
 
     if (!forceRefresh && cacheIsFresh) {
-      return Response.json({ ...cachedSystemQuota.data, cached: true });
+      return Response.json({ ...hideQuotaResetDetails(cachedSystemQuota.data, user), cached: true });
     }
 
     const connections = (await getProviderConnections({})).filter(isUsageEligible);
@@ -209,7 +221,7 @@ export async function GET(request) {
     const data = buildSystemQuotaResponse(connections, normalizedResults);
     cachedSystemQuota = { data, cachedAt: Date.now() };
 
-    return Response.json({ ...data, cached: false });
+    return Response.json({ ...hideQuotaResetDetails(data, user), cached: false });
   } catch (error) {
     if (error?.message === "Unauthorized") {
       return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { Button, Card, CardSkeleton } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { formatResetTime, REFRESH_INTERVAL_MS } from "./ProviderLimits/utils";
-import { formatVietnamDateTime, formatVietnamTime, isSameVietnamDay } from "@/shared/utils/dateTime";
+import { REFRESH_INTERVAL_MS } from "./ProviderLimits/utils";
+import { formatVietnamTime } from "@/shared/utils/dateTime";
 
 function getProviderInfo(providerId) {
   return AI_PROVIDERS[providerId] || {
@@ -24,21 +24,6 @@ function formatUpdatedAt(value) {
   return formattedTime ? `Updated ${formattedTime}` : "Not updated yet";
 }
 
-function formatResetAt(value) {
-  if (!value) return null;
-
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
-
-  const isToday = isSameVietnamDay(date);
-  const isTomorrow = isSameVietnamDay(date, new Date(Date.now() + 86400000));
-  const time = formatVietnamTime(date, { hour: "2-digit", minute: "2-digit" });
-
-  if (isToday) return `today at ${time}`;
-  if (isTomorrow) return `tomorrow at ${time}`;
-  return formatVietnamDateTime(date, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
 function getQuotaTone(percentage) {
   if (percentage > 70) {
     return { bar: "bg-green-500", dot: "bg-green-500", text: "text-green-500" };
@@ -51,9 +36,6 @@ function getQuotaTone(percentage) {
 
 function QuotaListRow({ quota }) {
   const tone = getQuotaTone(quota.remainingPercentage);
-  const resetIn = formatResetTime(quota.resetAt);
-  const resetAt = formatResetAt(quota.resetAt);
-  const resetLabel = quota.recurring === false ? "Expires" : "Resets";
 
   return (
     <li className="py-3 first:pt-0 last:pb-0">
@@ -77,13 +59,6 @@ function QuotaListRow({ quota }) {
           style={{ width: `${Math.min(Math.max(quota.remainingPercentage, 0), 100)}%` }}
         />
       </div>
-      {(resetIn !== "-" || resetAt) && (
-        <p className="mt-2 text-xs text-text-muted">
-          {resetIn !== "-" && <span>{resetLabel} in {resetIn}</span>}
-          {resetIn !== "-" && resetAt && <span className="px-1.5 text-text-muted/60"> · </span>}
-          {resetAt && <span>{resetAt}</span>}
-        </p>
-      )}
     </li>
   );
 }
