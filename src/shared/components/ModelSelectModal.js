@@ -79,8 +79,11 @@ export default function ModelSelectModal({
   };
 
   useEffect(() => {
-    if (isOpen) fetchProviderNodes();
-  }, [isOpen]);
+    // An injected catalog already includes all provider display metadata. Avoid
+    // the admin-only provider-nodes endpoint for member-facing selectors such
+    // as the Combos page.
+    if (isOpen && !Array.isArray(availableModels)) fetchProviderNodes();
+  }, [isOpen, availableModels]);
 
   const fetchCustomModels = async () => {
     try {

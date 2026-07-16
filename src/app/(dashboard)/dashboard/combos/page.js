@@ -86,6 +86,10 @@ export default function CombosPage() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
+        const judgeModel = comboStrategies[id]?.judgeModel;
+        if (judgeModel && !selectableModels.some((model) => model.fullModel === judgeModel)) {
+          await handleSetComboStrategy(id, { judgeModel: "" });
+        }
         await fetchData();
         setEditingCombo(null);
       } else {
@@ -243,7 +247,8 @@ const STRATEGY_OPTIONS = [
 function ComboCard({ combo, modelCaps = {}, availableModels = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
-  const judge = strategy.judgeModel || "";
+  const availableModelValues = new Set(availableModels.map((model) => model.fullModel));
+  const judge = availableModelValues.has(strategy.judgeModel) ? strategy.judgeModel : "";
   const isFusion = current === "fusion";
 
   return (
@@ -303,7 +308,10 @@ function ComboCard({ combo, modelCaps = {}, availableModels = [], copied, onCopy
             <Select
               options={STRATEGY_OPTIONS}
               value={current}
-              onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value })}
+              onChange={(e) => onSetStrategy({
+                fallbackStrategy: e.target.value,
+                ...(!judge && strategy.judgeModel ? { judgeModel: "" } : {}),
+              })}
               selectClassName="py-1.5 text-xs"
             />
           </div>
@@ -452,9 +460,12 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
 }
 
 function ComboFormModal({ isOpen, combo, onClose, onSave, availableModels = [], kindFilter = null }) {
+  const availableModelValues = new Set(availableModels.map((model) => model.fullModel));
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
-  const [models, setModels] = useState(combo?.models || []);
+  const [models, setModels] = useState(() => (
+    (combo?.models || []).filter((model) => availableModelValues.has(model))
+  ));
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -528,8 +539,9 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, availableModels = [], 
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    const eligibleModels = models.filter((model) => availableModelValues.has(model));
     setSaving(true);
-    await onSave({ name: name.trim(), models });
+    await onSave({ name: name.trim(), models: eligibleModels });
     setSaving(false);
   };
 

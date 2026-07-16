@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
-import { getModelsByProviderId } from "@/shared/constants/models";
-import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -109,63 +107,6 @@ function cloneSession(session) {
   };
 }
 
-function getProviderLabel(connection) {
-  return connection?.name || humanize(connection?.provider || connection?.id || "provider");
-}
-
-function normalizeStaticModel(model, connection) {
-  if (!model?.id) return null;
-  return {
-    id: `${connection.provider}/${model.id}`,
-    requestModel: `${connection.provider}/${model.id}`,
-    name: model.name || model.id,
-    providerId: connection.provider,
-    providerName: getProviderLabel(connection),
-    source: "static",
-  };
-}
-
-function normalizeLiveModel(model, connection) {
-  const rawId = typeof model === "string" ? model : model?.id || model?.name || model?.model || "";
-  if (!rawId) return null;
-
-  const displayName = typeof model === "string"
-    ? model
-    : model?.name || model?.displayName || rawId;
-
-  let requestModel = rawId;
-  const isCompatible = isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider);
-  if (isCompatible && !rawId.includes("/")) {
-    requestModel = `${connection.provider}/${rawId}`;
-  }
-
-  return {
-    id: requestModel,
-    requestModel,
-    name: displayName,
-    providerId: connection.provider,
-    providerName: getProviderLabel(connection),
-    source: "live",
-  };
-}
-
-function parseProviderModelsPayload(data) {
-  if (Array.isArray(data?.models)) return data.models;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data)) return data;
-  return [];
-}
-
-function dedupeModels(models) {
-  const map = new Map();
-  for (const model of models) {
-    if (!model?.id) continue;
-    if (!map.has(model.id)) map.set(model.id, model);
-  }
-  return Array.from(map.values());
-}
-
 export default function BasicChatPageClient() {
   const [providerGroups, setProviderGroups] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -218,79 +159,39 @@ export default function BasicChatPageClient() {
       setLoadError("");
 
       try {
-        const providersRes = await fetch("/api/providers", { cache: "no-store" });
-        const providersData = await providersRes.json().catch(() => ({}));
-        const connections = Array.isArray(providersData.connections)
-          ? providersData.connections.filter((connection) => connection?.isActive !== false)
-          : [];
-
-        if (connections.length === 0) {
-          if (!cancelled) {
-            setProviderGroups([]);
-            setLoadError("No providers connected yet.");
-          }
-          return;
-        }
+        const modelsRes = await fetch("/api/models/connected", { cache: "no-store" });
+        const modelsData = await modelsRes.json().catch(() => ({}));
+        if (!modelsRes.ok) throw new Error(modelsData.error || "Failed to load added models.");
 
         const providerMap = new Map();
-
-        for (const connection of connections) {
-          const providerId = connection.provider || connection.id;
-          const providerName = getProviderLabel(connection);
-          const providerType = isOpenAICompatibleProvider(providerId)
-            ? "openai-compatible"
-            : isAnthropicCompatibleProvider(providerId)
-              ? "anthropic-compatible"
-              : providerId;
+        for (const model of modelsData.models || []) {
+          if (model.disabled || !model.fullModel) continue;
+          const providerId = model.provider?.id || model.providerAlias;
+          const providerName = model.provider?.name || humanize(providerId);
 
           if (!providerMap.has(providerId)) {
             providerMap.set(providerId, {
               providerId,
               providerName,
-              providerType,
-              connections: [],
               models: [],
             });
           }
 
           const group = providerMap.get(providerId);
-          group.providerName = group.providerName || providerName;
-          group.providerType = group.providerType || providerType;
-          group.connections.push(connection);
-
-          const staticModels = getModelsByProviderId(providerId)
-            .map((model) => normalizeStaticModel(model, connection))
-            .filter(Boolean);
-          group.models.push(...staticModels);
-        }
-
-        const liveResults = await Promise.all(
-          connections.map(async (connection) => {
-            try {
-              const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store" });
-              const data = await response.json().catch(() => ({}));
-              if (!response.ok) return { connection, models: [] };
-              const models = parseProviderModelsPayload(data)
-                .map((model) => normalizeLiveModel(model, connection))
-                .filter(Boolean);
-              return { connection, models };
-            } catch {
-              return { connection, models: [] };
-            }
-          })
-        );
-
-        for (const result of liveResults) {
-          const providerId = result.connection.provider || result.connection.id;
-          const group = providerMap.get(providerId);
-          if (!group) continue;
-          group.models.push(...result.models);
+          group.models.push({
+            id: model.fullModel,
+            requestModel: model.fullModel,
+            name: model.name || model.alias || model.model,
+            providerId,
+            providerName,
+            source: "added",
+          });
         }
 
         const normalized = Array.from(providerMap.values())
           .map((group) => ({
             ...group,
-            models: dedupeModels(group.models).sort((a, b) => a.name.localeCompare(b.name)),
+            models: group.models.sort((a, b) => a.name.localeCompare(b.name)),
           }))
           .filter((group) => group.models.length > 0)
           .sort((a, b) => a.providerName.localeCompare(b.providerName));
@@ -298,12 +199,12 @@ export default function BasicChatPageClient() {
         if (!cancelled) {
           setProviderGroups(normalized);
           if (normalized.length === 0) {
-            setLoadError("Providers connected but no models available.");
+            setLoadError("No added models are available. Add a model from a provider first.");
           }
         }
       } catch (error) {
         if (!cancelled) {
-          setLoadError(textValue(error?.message) || "Failed to load providers/models.");
+          setLoadError(textValue(error?.message) || "Failed to load added models.");
           setProviderGroups([]);
         }
       } finally {
@@ -761,7 +662,7 @@ export default function BasicChatPageClient() {
               <div className="absolute left-0 top-[calc(100%+10px)] z-30 w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[20px] border border-white/10 bg-[#262626] shadow-2xl shadow-black/50">
                 <div className="border-b border-white/10 px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.22em] text-white/45">Models</p>
-                  <p className="text-sm text-white/75">Only from connected providers</p>
+                  <p className="text-sm text-white/75">Added models from connected providers</p>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
                   {providerGroups.map((group) => (

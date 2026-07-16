@@ -165,6 +165,7 @@ export default function ConfigGeneratorCard({
   baseUrl,
   apiKeys,
   activeProviders,
+  availableModels = [],
   cloudEnabled,
   tunnelEnabled,
   tunnelPublicUrl,
@@ -183,7 +184,7 @@ export default function ConfigGeneratorCard({
   const [coworkThinking, setCoworkThinking] = useState({});
   const [copilotTokens, setCopilotTokens] = useState({});
   const [copilotThinking, setCopilotThinking] = useState({});
-  const [connectedModels, setConnectedModels] = useState(null);
+  const connectedModels = availableModels;
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -225,26 +226,6 @@ export default function ConfigGeneratorCard({
       console.log("Error loading models.dev token limits:", error);
     }
   };
-
-  useEffect(() => {
-    if (toolId !== "claude" && toolId !== "codex" && toolId !== "opencode" && toolId !== "cowork" && toolId !== "copilot") return;
-
-    let cancelled = false;
-    const loadConnectedModels = async () => {
-      try {
-        const response = await fetch("/api/models/connected", { cache: "no-store" });
-        if (!response.ok) throw new Error("Failed to load connected models");
-        const data = await response.json();
-        if (!cancelled) setConnectedModels(data.models || []);
-      } catch (error) {
-        console.log(`Error loading connected models for ${tool.name}:`, error);
-        if (!cancelled) setConnectedModels([]);
-      }
-    };
-
-    loadConnectedModels();
-    return () => { cancelled = true; };
-  }, [toolId, tool.name]);
 
   const addModel = (selected) => {
     if (!selected?.value || selectedModels.includes(selected.value)) return;
@@ -593,7 +574,7 @@ export default function ConfigGeneratorCard({
         title={toolId === "claude" && claudeModelSlot ? `Select ${claudeModelSlot} model` : toolId === "codex" ? "Select Codex model" : toolId === "opencode" ? "Add OpenCode model" : `Add model for ${tool.name}`}
         closeOnSelect={toolId === "claude" || toolId === "codex"}
         addedModelValues={toolId === "claude" ? Object.values(claudeModels).filter(Boolean) : toolId === "codex" ? [codexModel].filter(Boolean) : toolId === "opencode" ? opencodeModels : selectedModels}
-        availableModels={toolId === "claude" || toolId === "codex" || toolId === "opencode" || toolId === "cowork" || toolId === "copilot" ? connectedModels : null}
+        availableModels={availableModels}
       />
       <ManualConfigModal isOpen={configModalOpen} onClose={() => setConfigModalOpen(false)} title={`${tool.name} configuration`} configs={configs} />
     </Card>

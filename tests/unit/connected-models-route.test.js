@@ -58,9 +58,14 @@ describe("GET /api/models/connected", () => {
     requireUsageDashboardUser.mockReset();
     getCapabilitiesForModel.mockReset();
 
-    getModelAliases.mockResolvedValue({ "alpha/enabled": "preferred-alpha" });
+    getModelAliases.mockResolvedValue({ "preferred-alpha": "alpha-alias/enabled" });
     getDisabledModels.mockResolvedValue({ "alpha-alias": ["disabled"] });
-    getCustomModels.mockResolvedValue([]);
+    getCustomModels.mockResolvedValue([
+      { providerAlias: "alpha-alias", id: "enabled", name: "Enabled model", type: "llm" },
+      { providerAlias: "alpha-alias", id: "disabled", name: "Disabled model", type: "llm" },
+      { providerAlias: "alpha-alias", id: "embedding", name: "Embedding model", type: "embedding" },
+      { providerAlias: "beta-alias", id: "inactive", name: "Inactive provider model", type: "llm" },
+    ]);
     getProviderNodes.mockResolvedValue([]);
     getUsers.mockResolvedValue([{ id: "admin", role: "admin", isActive: true }]);
     getCapabilitiesForModel.mockReturnValue({ vision: false, search: true, reasoning: true });
@@ -70,7 +75,7 @@ describe("GET /api/models/connected", () => {
     ]);
   });
 
-  it("returns every connected-provider model to an administrator, including disabled rows", async () => {
+  it("returns added models for a connected provider to an administrator, including disabled rows", async () => {
     requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
 
     const response = await GET();
@@ -79,20 +84,32 @@ describe("GET /api/models/connected", () => {
     expect(response.status).toBe(200);
     expect(body.models).toEqual([
       expect.objectContaining({
-        fullModel: "alpha/disabled",
+        fullModel: "alpha-alias/disabled",
         providerAlias: "alpha-alias",
         disabled: true,
       }),
       expect.objectContaining({
-        fullModel: "alpha/enabled",
+        fullModel: "alpha-alias/enabled",
         alias: "preferred-alpha",
         disabled: false,
         caps: { vision: false, search: true, reasoning: true },
       }),
     ]);
     expect(body.models).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ fullModel: "beta/inactive" }),
+      expect.objectContaining({ model: "embedding" }),
+      expect.objectContaining({ fullModel: "beta-alias/inactive" }),
     ]));
+  });
+
+  it("does not include registry models without an explicit added-model record", async () => {
+    requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
+    getCustomModels.mockResolvedValue([]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.models).toEqual([]);
   });
 
   it("excludes disabled models for non-administrators", async () => {
@@ -103,7 +120,7 @@ describe("GET /api/models/connected", () => {
 
     expect(response.status).toBe(200);
     expect(body.models).toEqual([
-      expect.objectContaining({ fullModel: "alpha/enabled", disabled: false }),
+      expect.objectContaining({ fullModel: "alpha-alias/enabled", disabled: false }),
     ]);
   });
 
@@ -126,7 +143,7 @@ describe("GET /api/models/connected", () => {
       { providerAlias: providerId, id: "gpt-company", name: "Company GPT", type: "llm" },
       { providerAlias: providerId, id: "company-embed", name: "Company Embed", type: "embedding" },
     ]);
-    getModelAliases.mockResolvedValue({ [`${providerId}/gpt-company`]: "company-chat" });
+    getModelAliases.mockResolvedValue({ "company-chat": `${providerId}/gpt-company` });
 
     const response = await GET();
     const body = await response.json();

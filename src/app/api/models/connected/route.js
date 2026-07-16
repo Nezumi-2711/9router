@@ -8,7 +8,6 @@ import {
 import { getUsers } from "@/lib/db";
 import { disableModels, enableModels, getDisabledModels } from "@/lib/disabledModelsDb";
 import { requireAdminUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
-import { AI_MODELS } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,
   getProviderAlias,
@@ -33,6 +32,18 @@ function isViableConnection(connection) {
 function getConnectionProviderAliases(connection) {
   const alias = getProviderAlias(connection.provider) || connection.provider;
   return [...new Set([connection.provider, alias])];
+}
+
+function getModelType(model) {
+  return model?.kind || model?.type || "llm";
+}
+
+function getAliasByFullModel(modelAliases) {
+  return new Map(
+    Object.entries(modelAliases)
+      .filter(([, fullModel]) => typeof fullModel === "string")
+      .map(([alias, fullModel]) => [fullModel, alias]),
+  );
 }
 
 function getProviderLabel(providerAlias) {
@@ -70,7 +81,9 @@ function getForbiddenResponse(error) {
   return null;
 }
 
-// GET /api/models/connected - List models from providers with a usable active connection.
+// GET /api/models/connected - List administrator-added LLMs from providers with
+// a usable active connection. Provider registries and live /models responses are
+// discovery sources only; a customModels record is the explicit availability source.
 export async function GET() {
   try {
     const user = await requireUsageDashboardUser();
@@ -84,36 +97,27 @@ export async function GET() {
       getUsers(),
     ]);
 
-    const connectionCountByAlias = new Map();
+    const connectedProviderByAlias = new Map();
     for (const connection of connections) {
       if (!isViableConnection(connection)) continue;
 
+      if (
+        isOpenAICompatibleProvider(connection.provider)
+        || isAnthropicCompatibleProvider(connection.provider)
+      ) {
+        continue;
+      }
+
       for (const alias of getConnectionProviderAliases(connection)) {
-        connectionCountByAlias.set(alias, (connectionCountByAlias.get(alias) || 0) + 1);
+        if (!connectedProviderByAlias.has(alias)) {
+          connectedProviderByAlias.set(alias, {
+            providerId: connection.provider,
+            providerAlias: getProviderAlias(connection.provider) || connection.provider,
+            provider: getProviderLabel(connection.provider),
+          });
+        }
       }
     }
-
-    const staticModels = AI_MODELS
-      .filter((model) => connectionCountByAlias.has(model.provider))
-      .map((model) => {
-        const providerAlias = getProviderAlias(model.provider) || model.provider;
-        const disabled = disabledModels[providerAlias] || disabledModels[model.provider] || [];
-        const caps = getCapabilitiesForModel(model.provider, model.model);
-
-        return {
-          ...model,
-          provider: getProviderLabel(model.provider),
-          providerAlias,
-          fullModel: `${model.provider}/${model.model}`,
-          alias: modelAliases[`${model.provider}/${model.model}`] || model.model,
-          disabled: disabled.includes(model.model),
-          caps: {
-            vision: caps.vision,
-            search: caps.search,
-            reasoning: caps.reasoning,
-          },
-        };
-      });
 
     // Compatible providers are dynamic and therefore absent from AI_MODELS.
     // Their catalog is the explicit list maintained by an administrator on the
@@ -140,39 +144,57 @@ export async function GET() {
       }
     }
 
-    const compatibleModels = [];
+    const compatibleProviderByAlias = new Map();
     for (const [providerId, connection] of viableCompatibleConnections) {
       const provider = getCompatibleProviderLabel(providerId, nodeById.get(providerId), connection);
-      const disabled = disabledModels[providerId] || [];
+      compatibleProviderByAlias.set(providerId, {
+        providerId,
+        providerAlias: providerId,
+        provider,
+      });
+    }
 
-      for (const customModel of customModels) {
-        const kind = customModel.kind || customModel.type || "llm";
-        if (customModel.providerAlias !== providerId || kind !== "llm" || !customModel.id) continue;
+    const aliasByFullModel = getAliasByFullModel(modelAliases);
+    const seenFullModels = new Set();
+    const models = customModels
+      .filter((customModel) => customModel?.id && getModelType(customModel) === "llm")
+      .map((customModel) => {
+        const providerEntry = connectedProviderByAlias.get(customModel.providerAlias)
+          || compatibleProviderByAlias.get(customModel.providerAlias);
+        if (!providerEntry) return null;
 
         const modelId = String(customModel.id).trim();
-        if (!modelId) continue;
+        if (!modelId) return null;
 
-        const fullModel = `${providerId}/${modelId}`;
-        const caps = getCapabilitiesForModel(providerId, modelId);
-        compatibleModels.push({
-          provider,
-          providerAlias: providerId,
+        const storageAlias = customModel.providerAlias;
+        const fullModel = `${storageAlias}/${modelId}`;
+        if (seenFullModels.has(fullModel)) return null;
+        seenFullModels.add(fullModel);
+
+        const disabled = new Set([
+          ...(disabledModels[storageAlias] || []),
+          ...(disabledModels[providerEntry.providerId] || []),
+          ...(disabledModels[providerEntry.providerAlias] || []),
+        ]);
+        const caps = getCapabilitiesForModel(providerEntry.providerId, modelId);
+
+        return {
+          provider: providerEntry.provider,
+          providerAlias: storageAlias,
           model: modelId,
           name: customModel.name || modelId,
           fullModel,
-          alias: modelAliases[fullModel] || modelId,
-          disabled: disabled.includes(modelId),
+          alias: aliasByFullModel.get(fullModel) || modelId,
+          disabled: disabled.has(modelId),
           isCustom: true,
           caps: {
             vision: caps.vision,
             search: caps.search,
             reasoning: caps.reasoning,
           },
-        });
-      }
-    }
-
-    const models = [...staticModels, ...compatibleModels]
+        };
+      })
+      .filter(Boolean)
       .filter((model) => user.role === "admin" || !model.disabled)
       .sort((a, b) => (
         a.provider.name.localeCompare(b.provider.name)

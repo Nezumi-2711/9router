@@ -2,75 +2,49 @@
 
 import { useState, useEffect } from "react";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
-import { getModelsByProviderId } from "@/shared/constants/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
 
 export default function MitmPageClient() {
   const [connections, setConnections] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
+  const [availableModels, setAvailableModels] = useState([]);
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [expandedTool, setExpandedTool] = useState(null);
   const [mitmStatus, setMitmStatus] = useState({ running: false, certExists: false, dnsStatus: {}, hasCachedPassword: false });
 
   useEffect(() => {
-    fetchConnections();
-    fetchApiKeys();
-    fetchAliases();
-    fetchCloudSettings();
+    let cancelled = false;
+
+    Promise.all([
+      fetch("/api/providers"),
+      fetch("/api/keys"),
+      fetch("/api/models/alias"),
+      fetch("/api/models/connected", { cache: "no-store" }),
+      fetch("/api/settings"),
+    ]).then(async ([connectionsRes, keysRes, aliasesRes, modelsRes, settingsRes]) => {
+      const [connectionsData, keysData, aliasesData, modelsData, settingsData] = await Promise.all([
+        connectionsRes.ok ? connectionsRes.json() : {},
+        keysRes.ok ? keysRes.json() : {},
+        aliasesRes.ok ? aliasesRes.json() : {},
+        modelsRes.ok ? modelsRes.json() : {},
+        settingsRes.ok ? settingsRes.json() : {},
+      ]);
+      if (cancelled) return;
+
+      setConnections(connectionsData.connections || []);
+      setApiKeys(keysData.keys || []);
+      setModelAliases(aliasesData.aliases || {});
+      setAvailableModels((modelsData.models || []).filter((model) => !model.disabled));
+      setCloudEnabled(settingsData.cloudEnabled || false);
+    }).catch(() => {});
+
+    return () => { cancelled = true; };
   }, []);
-
-  const fetchConnections = async () => {
-    try {
-      const res = await fetch("/api/providers");
-      if (res.ok) {
-        const data = await res.json();
-        setConnections(data.connections || []);
-      }
-    } catch { /* ignore */ }
-  };
-
-  const fetchApiKeys = async () => {
-    try {
-      const res = await fetch("/api/keys");
-      if (res.ok) {
-        const data = await res.json();
-        setApiKeys(data.keys || []);
-      }
-    } catch { /* ignore */ }
-  };
-
-  const fetchAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      if (res.ok) {
-        const data = await res.json();
-        setModelAliases(data.aliases || {});
-      }
-    } catch { /* ignore */ }
-  };
-
-  const fetchCloudSettings = async () => {
-    try {
-      const res = await fetch("/api/settings");
-      if (res.ok) {
-        const data = await res.json();
-        setCloudEnabled(data.cloudEnabled || false);
-      }
-    } catch { /* ignore */ }
-  };
 
   const getActiveProviders = () => connections.filter(c => c.isActive !== false);
 
-  const hasActiveProviders = () => {
-    const active = getActiveProviders();
-    return active.some(conn =>
-      getModelsByProviderId(conn.provider).length > 0 ||
-      isOpenAICompatibleProvider(conn.provider) ||
-      isAnthropicCompatibleProvider(conn.provider)
-    );
-  };
+  const hasActiveProviders = () => availableModels.length > 0;
 
   const mitmTools = Object.entries(MITM_TOOLS);
 
@@ -105,6 +79,7 @@ export default function MitmPageClient() {
             isWin={mitmStatus.isWin === true}
             apiKeys={apiKeys}
             activeProviders={getActiveProviders()}
+            availableModels={availableModels}
             hasActiveProviders={hasActiveProviders()}
             modelAliases={modelAliases}
             cloudEnabled={cloudEnabled}

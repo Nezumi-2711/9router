@@ -18,16 +18,18 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const [tailscaleEnabled, setTailscaleEnabled] = useState(false);
   const [tailscaleUrl, setTailscaleUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
+  const [availableModels, setAvailableModels] = useState([]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [provRes, settingsRes, tunnelRes, keysRes] = await Promise.all([
+        const [provRes, settingsRes, tunnelRes, keysRes, modelsRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/settings"),
           fetch("/api/tunnel/status"),
           fetch("/api/keys"),
+          fetch("/api/models/connected", { cache: "no-store" }),
         ]);
         if (!mounted) return;
         if (provRes.ok) {
@@ -48,6 +50,10 @@ export default function ToolDetailClient({ toolId, machineId }) {
         if (keysRes.ok) {
           const data = await keysRes.json();
           setApiKeys(data.keys || []);
+        }
+        if (modelsRes.ok) {
+          const data = await modelsRes.json();
+          setAvailableModels((data.models || []).filter((model) => !model.disabled));
         }
       } catch (error) {
         console.log("Error loading tool data:", error);
@@ -78,6 +84,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
       tailscaleEnabled,
       tailscaleUrl,
       activeProviders: getActiveProviders(),
+      availableModels,
       cloudEnabled,
     };
 

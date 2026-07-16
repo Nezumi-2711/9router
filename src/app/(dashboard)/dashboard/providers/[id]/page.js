@@ -1058,14 +1058,24 @@ export default function ProviderDetailPage() {
       ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
     ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; });
     const disabledSet = new Set(disabledModelIds);
+    const addedModelIds = new Set(
+      customModels
+        .filter((entry) => (
+          entry.providerAlias === providerStorageAlias
+          && (entry.kind || entry.type || "llm") === "llm"
+          && entry.id
+        ))
+        .map((entry) => entry.id),
+    );
     const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
     const customModelRows = getProviderCustomModelRows({
       customModels,
       modelAliases,
       providerAlias: providerStorageAlias,
-      builtInModels: models,
+      builtInModels: allModels,
       type: "llm",
+      includeLegacyAliases: false,
     });
 
     return (
@@ -1091,6 +1101,7 @@ export default function ProviderDetailPage() {
             onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
             isTesting={testingModelIds.has(model.id)}
             isCustom
+            isAdded
             isFree={false}
             caps={getCaps(`${providerId}/${model.id}`)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
@@ -1117,7 +1128,11 @@ export default function ProviderDetailPage() {
               onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
-              onDisable={() => handleDisableModel(model.id)}
+              isAdded={addedModelIds.has(model.id)}
+              onAdd={() => handleAddCustomModel(model.id, "llm", providerStorageAlias)}
+              onRemove={addedModelIds.has(model.id)
+                ? () => handleDeleteCustomModel(model.id, "llm", providerStorageAlias)
+                : undefined}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
@@ -1597,7 +1612,7 @@ export default function ProviderDetailPage() {
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold">
-              {"Available Models"}
+              {"Provider Models"}
             </h2>
             {providerThinkingLevels && (
               <select

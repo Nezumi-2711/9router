@@ -6,38 +6,17 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
 
-export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, activeProviders = [], cloudEnabled = false, tunnelEnabled = false }) {
+export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, activeProviders = [], availableModels = [], cloudEnabled = false, tunnelEnabled = false }) {
   const [copiedField, setCopiedField] = useState(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelValue, setModelValue] = useState("");
   const [selectedModels, setSelectedModels] = useState([]);
-  const [connectedModels, setConnectedModels] = useState(null);
   const [isExpanded, setIsExpanded] = useState(true);
   
   // Initialize state directly with computed value - no need for useEffect
   const [selectedApiKey, setSelectedApiKey] = useState(() => 
     apiKeys?.length > 0 ? apiKeys[0].key : ""
   );
-
-  useEffect(() => {
-    if (toolId !== "cursor") return;
-
-    let cancelled = false;
-    const loadConnectedModels = async () => {
-      try {
-        const response = await fetch("/api/models/connected", { cache: "no-store" });
-        if (!response.ok) throw new Error("Failed to load connected models");
-        const data = await response.json();
-        if (!cancelled) setConnectedModels(data.models || []);
-      } catch (error) {
-        console.log(`Error loading connected models for ${tool.name}:`, error);
-        if (!cancelled) setConnectedModels([]);
-      }
-    };
-
-    loadConnectedModels();
-    return () => { cancelled = true; };
-  }, [toolId, tool.name]);
 
   const replaceVars = (text) => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
@@ -340,7 +319,7 @@ export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, active
         title={tool.modelSelection === "multiple" ? "Add Cursor custom model" : "Select Model"}
         closeOnSelect={tool.modelSelection !== "multiple"}
         addedModelValues={tool.modelSelection === "multiple" ? selectedModels : []}
-        availableModels={toolId === "cursor" ? connectedModels : null}
+        availableModels={availableModels}
       />
     </Card>
   );

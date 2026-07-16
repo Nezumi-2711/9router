@@ -65,7 +65,7 @@ function ProviderModelsCard({ group, canManage, onSetModelDisabled, onSetModelsD
           <div className="min-w-0">
             <h2 className="truncate font-semibold text-text-main">{group.provider.name}</h2>
             <p className="mt-0.5 text-xs text-text-muted">
-              {group.models.length} available model{group.models.length === 1 ? "" : "s"}
+              {group.models.length} added model{group.models.length === 1 ? "" : "s"}
             </p>
           </div>
           <span className={`material-symbols-outlined ml-auto text-[18px] text-text-muted transition-transform ${expanded ? "rotate-180" : ""}`}>
@@ -254,8 +254,8 @@ export default function ModelsPage() {
           </div>
           <p className="mt-1 text-sm text-text-muted">
             {canManage
-              ? "Select which connected-provider models are available through the API."
-              : "Browse models currently available through your connected providers."}
+              ? "Manage models explicitly added from connected providers."
+              : "Browse added models currently available through connected providers."}
           </p>
         </div>
         <label className="relative block w-full sm:w-80">
@@ -276,7 +276,7 @@ export default function ModelsPage() {
             <p className="mt-1 text-lg font-semibold tabular-nums text-text-main">{providerCount}</p>
           </div>
           <div className="bg-surface px-4 py-3">
-            <p className="text-xs font-medium text-text-muted">Available models</p>
+            <p className="text-xs font-medium text-text-muted">Added models</p>
             <p className="mt-1 text-lg font-semibold tabular-nums text-text-main">{models.length}</p>
           </div>
         </section>
@@ -296,7 +296,7 @@ export default function ModelsPage() {
           <span className="material-symbols-outlined text-[32px] text-text-muted">search_off</span>
           <p className="mt-2 text-sm text-text-muted">
             {models.length === 0
-              ? "No models are available. Add and activate a provider connection first."
+              ? "No models have been added. Open a connected provider and add a model first."
               : "No models match your search."}
           </p>
         </Card>

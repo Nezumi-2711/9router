@@ -50,13 +50,20 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
 }
 
 // Reusable Combo create/edit modal. forcePrefix auto-prepends to name.
-export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null, forcePrefix = "", title }) {
+export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, availableModels = null, kindFilter = null, forcePrefix = "", title }) {
   // Strip prefix when editing existing combo so user only edits suffix
   const initialName = combo?.name
     ? (forcePrefix && combo.name.startsWith(forcePrefix) ? combo.name.slice(forcePrefix.length) : combo.name)
     : "";
   const [name, setName] = useState(initialName);
-  const [models, setModels] = useState(combo?.models || []);
+  const availableModelValues = Array.isArray(availableModels)
+    ? new Set(availableModels.map((model) => model.fullModel))
+    : null;
+  const [models, setModels] = useState(() => (
+    availableModelValues
+      ? (combo?.models || []).filter((model) => availableModelValues.has(model))
+      : combo?.models || []
+  ));
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -101,8 +108,11 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
 
   const handleSave = async () => {
     if (!validateName(name)) return;
+    const eligibleModels = availableModelValues
+      ? models.filter((model) => availableModelValues.has(model))
+      : models;
     setSaving(true);
-    await onSave({ name: forcePrefix + name.trim(), models });
+    await onSave({ name: forcePrefix + name.trim(), models: eligibleModels });
     setSaving(false);
   };
 
@@ -169,6 +179,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
       <ModelSelectModal isOpen={showModelSelect} onClose={() => setShowModelSelect(false)}
         onSelect={handleAddModel} onDeselect={handleDeselectModel}
         activeProviders={activeProviders} modelAliases={modelAliases}
+        availableModels={availableModels}
         title="Add Model to Combo" kindFilter={kindFilter}
         addedModelValues={models} closeOnSelect={false} />
     </>
