@@ -12,6 +12,7 @@
 - **Proxy-Pools**: auto-rotate strategy for no-auth providers (#2409)
 
 ## Fixes
+- **CLI Tools**: persist non-MITM tool configurations per dashboard user, select the runtime deployment endpoint, and keep custom API keys out of storage
 - **Cloudflare-AI**: support accountId in bulk key import (#2449)
 - **DB**: backup on schema change, MCP child cleanup, codex models, usage providers OOM
 - **Codex**: avoid bare-email OAuth dedup (#2477)

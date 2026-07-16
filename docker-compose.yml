@@ -14,7 +14,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 2G
+          memory: 512M
     # Dokploy/Traefik should route to this internal port. Do not publish it
     # with `ports:`; public HTTP(S) is provided by the Dokploy domain router.
     expose:

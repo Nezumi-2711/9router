@@ -1,22 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Card, ModelSelectModal } from "@/shared/components";
+import { useEffect, useRef, useState } from "react";
+import { Button, Card, ModelSelectModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
 
-export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, activeProviders = [], availableModels = [], cloudEnabled = false, tunnelEnabled = false }) {
+export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, activeProviders = [], availableModels = [], cloudEnabled = false, tunnelEnabled = false, initialConfig, onSaveConfig }) {
   const [copiedField, setCopiedField] = useState(null);
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelValue, setModelValue] = useState("");
-  const [selectedModels, setSelectedModels] = useState([]);
+  const [selectedModels, setSelectedModels] = useState(() => initialConfig?.selectedModels || []);
   const [isExpanded, setIsExpanded] = useState(true);
-  
-  // Initialize state directly with computed value - no need for useEffect
-  const [selectedApiKey, setSelectedApiKey] = useState(() => 
-    apiKeys?.length > 0 ? apiKeys[0].key : ""
-  );
+  const restoredApiKey = initialConfig?.apiKeyId
+    ? apiKeys.find((key) => key.id === initialConfig.apiKeyId)?.key || ""
+    : "";
+  const [selectedApiKey, setSelectedApiKey] = useState(() => (
+    initialConfig?.apiKeyMode === "custom"
+      ? ""
+      : initialConfig?.apiKeyId ? restoredApiKey : apiKeys?.[0]?.key || ""
+  ));
+  const [apiKeyMode, setApiKeyMode] = useState(() => initialConfig?.apiKeyMode || "managed");
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const [saveError, setSaveError] = useState("");
+  const initializedSaveState = useRef(false);
+
+  useEffect(() => {
+    if (!initializedSaveState.current) {
+      initializedSaveState.current = true;
+      return;
+    }
+    setSaveStatus((current) => current === "saving" ? current : "dirty");
+    setSaveError("");
+  }, [apiKeyMode, selectedApiKey, selectedModels]);
 
   const replaceVars = (text) => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim()) 
@@ -57,11 +73,29 @@ export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, active
     setSelectedModels((current) => current.filter((value) => value !== model.value));
   };
 
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    setSaveError("");
+    try {
+      await onSaveConfig({
+        selectedModels,
+        apiKeyMode,
+        apiKeyId: apiKeyMode === "managed"
+          ? apiKeys.find((key) => key.key === selectedApiKey)?.id || null
+          : null,
+      });
+      setSaveStatus("saved");
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveError(error.message || "Failed to save configuration");
+    }
+  };
+
   const hasActiveProviders = activeProviders.length > 0;
 
   const renderApiKeySelector = () => (
     <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
-      <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} className="flex-1" />
+      <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} className="flex-1" mode={apiKeyMode} onModeChange={setApiKeyMode} />
     </div>
   );
 
@@ -247,6 +281,20 @@ export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, active
             <pre className="p-4 bg-bg-secondary rounded-lg border border-border overflow-x-auto">
               <code className="text-sm font-mono whitespace-pre">{replaceVars(tool.codeBlock.code)}</code>
             </pre>
+          </div>
+        )}
+        {canShowGuide() && (
+          <div className="flex flex-col gap-2 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={handleSave} disabled={saveStatus === "saving"}>
+                <span className="material-symbols-outlined mr-1 text-[16px]">{saveStatus === "saving" ? "progress_activity" : "save"}</span>
+                {saveStatus === "saving" ? "Saving..." : "Save"}
+              </Button>
+              {saveStatus === "saved" && <span className="text-xs text-green-600 dark:text-green-400">Configuration saved.</span>}
+              {saveStatus === "dirty" && <span className="text-xs text-text-muted">Unsaved changes</span>}
+              {saveStatus === "error" && <span className="text-xs text-red-600 dark:text-red-400">{saveError}</span>}
+            </div>
+            {apiKeyMode === "custom" && <p className="text-xs text-amber-600 dark:text-amber-400">The custom API key is never saved and must be entered again after reload.</p>}
           </div>
         )}
       </div>

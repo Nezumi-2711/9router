@@ -16,6 +16,8 @@ export {
   createApiKey, updateApiKey, deleteApiKey, validateApiKey,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
+  getCliToolConfig, getCliToolConfigsByOwnerId,
+  upsertCliToolConfig, deleteCliToolConfigsByOwnerId,
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, deleteCustomModel,
   getMitmAlias, setMitmAliasAll,

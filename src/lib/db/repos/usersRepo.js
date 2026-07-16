@@ -117,8 +117,13 @@ export async function countActiveAdmins() {
 
 export async function deleteUser(id) {
   const db = await getAdapter();
-  const result = db.run(`DELETE FROM users WHERE id = ?`, [id]);
-  return (result?.changes ?? 0) > 0;
+  let deleted = false;
+  db.transaction(() => {
+    db.run(`DELETE FROM cliToolConfigs WHERE ownerId = ?`, [id]);
+    const result = db.run(`DELETE FROM users WHERE id = ?`, [id]);
+    deleted = (result?.changes ?? 0) > 0;
+  });
+  return deleted;
 }
 
 export async function verifyUserCredentials(username, password) {

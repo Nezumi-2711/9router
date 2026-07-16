@@ -1,6 +1,7 @@
 // Public API barrel — all DB functions
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+import { normalizeCliToolConfig, isPersistableCliTool } from "@/shared/constants/cliToolConfig.js";
 
 // Settings
 export {
@@ -45,6 +46,12 @@ export {
   createCombo, updateCombo, deleteCombo,
 } from "./repos/combosRepo.js";
 
+// Per-user CLI tool configurations
+export {
+  getCliToolConfig, getCliToolConfigsByOwnerId,
+  upsertCliToolConfig, deleteCliToolConfigsByOwnerId,
+} from "./repos/cliToolConfigsRepo.js";
+
 // Aliases (model + custom + mitm)
 export {
   getModelAliases, setModelAlias, deleteModelAlias,
@@ -87,6 +94,7 @@ export async function exportDb() {
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => ({ id: r.id, key: r.key, name: r.name, machineId: r.machineId, ownerId: r.ownerId, isActive: r.isActive === 1, createdAt: r.createdAt })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, ownerId: r.ownerId, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+    cliToolConfigs: db.all(`SELECT * FROM cliToolConfigs`).map((r) => ({ ownerId: r.ownerId, toolId: r.toolId, config: parseJson(r.data, {}), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     modelAliases: {},
     customModels: [],
     mitmAlias: {},
@@ -121,6 +129,7 @@ export async function importDb(payload) {
   db.transaction(() => {
     // Wipe all tables (keep _meta)
     db.run(`DELETE FROM settings`);
+    db.run(`DELETE FROM cliToolConfigs`);
     // Old backups predate multi-user authentication. Preserve the local
     // administrator unless the payload explicitly carries a users array.
     if (Array.isArray(payload.users)) db.run(`DELETE FROM users`);
@@ -185,6 +194,22 @@ export async function importDb(payload) {
         `INSERT OR REPLACE INTO combos(id, name, ownerId, kind, models, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
         [c.id, c.name, c.ownerId || fallbackOwnerId, c.kind || null, stringifyJson(c.models || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
       );
+    }
+    const userOwnerIds = new Set(db.all(`SELECT id FROM users`).map((user) => user.id));
+    const apiKeyOwners = new Map(db.all(`SELECT id, ownerId FROM apiKeys`).map((key) => [key.id, key.ownerId]));
+    for (const row of payload.cliToolConfigs || []) {
+      if (!row?.ownerId || !userOwnerIds.has(row.ownerId) || !isPersistableCliTool(row.toolId)) continue;
+      try {
+        const config = normalizeCliToolConfig(row.toolId, row.config);
+        if (config.apiKeyMode === "managed" && config.apiKeyId && apiKeyOwners.get(config.apiKeyId) !== row.ownerId) continue;
+        const timestamp = new Date().toISOString();
+        db.run(
+          `INSERT OR REPLACE INTO cliToolConfigs(ownerId, toolId, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+          [row.ownerId, row.toolId, stringifyJson(config), row.createdAt || timestamp, row.updatedAt || timestamp],
+        );
+      } catch {
+        // Skip malformed or secret-bearing configuration rows from backups.
+      }
     }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('modelAliases', ?, ?)`, [a, stringifyJson(m)]);

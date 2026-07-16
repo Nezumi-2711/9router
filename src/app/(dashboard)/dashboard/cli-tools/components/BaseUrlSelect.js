@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { APP_CONFIG } from "@/shared/constants/config";
+import { ensureCliToolV1Endpoint, isLocalCliToolUrl } from "@/shared/utils/cliToolEndpoint";
 
 const STORAGE_KEY = "9router.cliToolEndpointPresets";
 const CUSTOM_VALUE = "__custom__";
 const SAVE_VALUE = "__save__";
-
-const ensureV1 = (url) => {
-  const trimmed = (url || "").replace(/\/+$/, "");
-  if (!trimmed) return "";
-  return /\/v1$/.test(trimmed) ? trimmed : `${trimmed}/v1`;
-};
 
 const readSavedPresets = () => {
   if (typeof window === "undefined") return [];
@@ -29,12 +24,15 @@ const writeSavedPresets = (presets) => {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
 };
 
-const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {
+const buildOptions = ({ appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {
   const opts = [];
-  const wrap = (url) => (withV1 ? ensureV1(url) : (url || "").replace(/\/+$/, ""));
-  if (!requiresExternalUrl) {
-    const localUrl = wrap(`http://127.0.0.1:${APP_CONFIG.defaultPort}`);
-    opts.push({ value: "local", label: localUrl, url: localUrl });
+  const wrap = (url) => (withV1 ? ensureCliToolV1Endpoint(url) : (url || "").replace(/\/+$/, ""));
+  const runtimeUrl = wrap(appUrl);
+  if (runtimeUrl && (!requiresExternalUrl || !isLocalCliToolUrl(runtimeUrl))) {
+    opts.push({ value: isLocalCliToolUrl(runtimeUrl) ? "local" : "deployment", label: runtimeUrl, url: runtimeUrl });
+  } else if (!requiresExternalUrl) {
+    const fallbackLocalUrl = wrap(`http://127.0.0.1:${APP_CONFIG.defaultPort}`);
+    opts.push({ value: "local", label: fallbackLocalUrl, url: fallbackLocalUrl });
   }
   if (tunnelEnabled && tunnelPublicUrl) {
     const u = wrap(tunnelPublicUrl);
@@ -58,6 +56,7 @@ const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tai
 export default function BaseUrlSelect({
   value,
   onChange,
+  appUrl = "",
   requiresExternalUrl = false,
   tunnelEnabled = false,
   tunnelPublicUrl = "",
@@ -69,31 +68,24 @@ export default function BaseUrlSelect({
 }) {
   const [savedPresets, setSavedPresets] = useState([]);
   const [mode, setMode] = useState("");
-  const [customInput, setCustomInput] = useState("");
-  const initializedRef = useRef(false);
 
   useEffect(() => {
-    setSavedPresets(readSavedPresets());
+    queueMicrotask(() => setSavedPresets(readSavedPresets()));
   }, []);
 
   const options = useMemo(
-    () => buildOptions({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }),
-    [requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1]
+    () => buildOptions({ appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }),
+    [appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1]
   );
 
-  // Always default to first option (127.0.0.1) on mount, ignore persisted value
-  useEffect(() => {
-    if (initializedRef.current) return;
-    if (options.length === 0) return;
-    initializedRef.current = true;
-    const first = options.find((o) => o.value !== CUSTOM_VALUE);
-    if (first) {
-      setMode(first.value);
-      onChange(first.url);
-    } else {
-      setMode(CUSTOM_VALUE);
-    }
-  }, [options, onChange]);
+  const effectiveMode = useMemo(() => {
+    if (mode) return mode;
+    const normalizedValue = (value || "").replace(/\/+$/, "");
+    const matchingOption = options.find((option) => option.value !== CUSTOM_VALUE && option.url.replace(/\/+$/, "") === normalizedValue);
+    if (matchingOption) return matchingOption.value;
+    if (value) return CUSTOM_VALUE;
+    return options.find((option) => option.value !== CUSTOM_VALUE)?.value || CUSTOM_VALUE;
+  }, [mode, options, value]);
 
   const handleSelect = (e) => {
     const next = e.target.value;
@@ -112,7 +104,6 @@ export default function BaseUrlSelect({
     }
     setMode(next);
     if (next === CUSTOM_VALUE) {
-      setCustomInput("");
       onChange("");
       return;
     }
@@ -121,31 +112,28 @@ export default function BaseUrlSelect({
   };
 
   const handleCustomInput = (e) => {
-    const v = e.target.value;
-    setCustomInput(v);
-    onChange(v);
+    onChange(e.target.value);
   };
 
   const handleDeleteSaved = () => {
-    if (!mode.startsWith("saved:")) return;
-    const name = mode.slice(6);
+    if (!effectiveMode.startsWith("saved:")) return;
+    const name = effectiveMode.slice(6);
     const updated = savedPresets.filter((p) => p.name !== name);
     setSavedPresets(updated);
     writeSavedPresets(updated);
     setMode(CUSTOM_VALUE);
-    setCustomInput("");
     onChange("");
   };
 
-  const isSaved = mode.startsWith("saved:");
-  const isCustom = mode === CUSTOM_VALUE;
-  const canSave = isCustom && (customInput || "").trim().length > 0;
+  const isSaved = effectiveMode.startsWith("saved:");
+  const isCustom = effectiveMode === CUSTOM_VALUE;
+  const canSave = isCustom && (value || "").trim().length > 0;
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <select
-          value={mode}
+          value={effectiveMode}
           onChange={handleSelect}
           className="flex-1 min-w-0 px-2 py-2 bg-surface rounded text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"
         >
@@ -163,7 +151,7 @@ export default function BaseUrlSelect({
       {isCustom && (
         <input
           type="text"
-          value={customInput}
+          value={value || ""}
           onChange={handleCustomInput}
           placeholder={withV1 ? "https://example.com/v1" : "https://example.com"}
           className="w-full min-w-0 px-2 py-2 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 sm:py-1.5"

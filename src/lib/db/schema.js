@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -122,6 +122,17 @@ export const TABLES = {
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_combo_global_name ON combos(name) WHERE ownerId IS NULL",
       "CREATE INDEX IF NOT EXISTS idx_combo_owner ON combos(ownerId)",
     ],
+  },
+  cliToolConfigs: {
+    columns: {
+      ownerId: "TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE",
+      toolId: "TEXT NOT NULL",
+      data: "TEXT NOT NULL",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (ownerId, toolId)",
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_cli_tool_configs_owner ON cliToolConfigs(ownerId)"],
   },
   kv: {
     columns: {

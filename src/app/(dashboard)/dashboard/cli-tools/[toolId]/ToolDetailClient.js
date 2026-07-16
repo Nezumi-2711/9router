@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
 import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
+import { resolveCliToolBaseUrl } from "@/shared/utils/cliToolEndpoint";
 import { ConfigGeneratorCard, DefaultToolCard } from "../components";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
+const CONFIGURED_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
 export default function ToolDetailClient({ toolId, machineId }) {
   const tool = CLI_TOOLS[toolId];
@@ -19,17 +21,19 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const [tailscaleUrl, setTailscaleUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
   const [availableModels, setAvailableModels] = useState([]);
+  const [initialConfig, setInitialConfig] = useState(null);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [provRes, settingsRes, tunnelRes, keysRes, modelsRes] = await Promise.all([
+        const [provRes, settingsRes, tunnelRes, keysRes, modelsRes, configRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/settings"),
           fetch("/api/tunnel/status"),
           fetch("/api/keys"),
           fetch("/api/models/connected", { cache: "no-store" }),
+          fetch(`/api/cli-tools/config/${encodeURIComponent(toolId)}`, { cache: "no-store" }),
         ]);
         if (!mounted) return;
         if (provRes.ok) {
@@ -55,6 +59,10 @@ export default function ToolDetailClient({ toolId, machineId }) {
           const data = await modelsRes.json();
           setAvailableModels((data.models || []).filter((model) => !model.disabled));
         }
+        if (configRes.ok) {
+          const data = await configRes.json();
+          setInitialConfig(data.config || null);
+        }
       } catch (error) {
         console.log("Error loading tool data:", error);
       } finally {
@@ -62,15 +70,34 @@ export default function ToolDetailClient({ toolId, machineId }) {
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [toolId]);
+
+  const saveConfig = useCallback(async (config) => {
+    const response = await fetch(`/api/cli-tools/config/${encodeURIComponent(toolId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Failed to save configuration");
+    setInitialConfig(data.config);
+    return data.config;
+  }, [toolId]);
 
   const getActiveProviders = () => connections.filter(c => c.isActive !== false);
 
   const getBaseUrl = () => {
-    if (tunnelEnabled && tunnelPublicUrl) return tunnelPublicUrl;
-    if (cloudEnabled && CLOUD_URL) return CLOUD_URL;
-    if (typeof window !== "undefined") return window.location.origin;
-    return "http://localhost:20128";
+    return resolveCliToolBaseUrl({
+      appUrl: typeof window !== "undefined" ? window.location.origin : "",
+      configuredBaseUrl: CONFIGURED_BASE_URL,
+      requiresExternalUrl: tool?.requiresExternalUrl === true,
+      tunnelEnabled,
+      tunnelPublicUrl,
+      tailscaleEnabled,
+      tailscaleUrl,
+      cloudEnabled,
+      cloudUrl: CLOUD_URL,
+    });
   };
 
   const renderToolCard = () => {
@@ -86,6 +113,8 @@ export default function ToolDetailClient({ toolId, machineId }) {
       activeProviders: getActiveProviders(),
       availableModels,
       cloudEnabled,
+      initialConfig,
+      onSaveConfig: saveConfig,
     };
 
     if (tool.configType === "guide") return <DefaultToolCard toolId={toolId} {...commonProps} />;

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Button, Card, ManualConfigModal, ModelSelectModal } from "@/shared/components";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { DEFAULT_MODEL_TOKEN_LIMITS, getInputTokenOptions, getOutputTokenOptions } from "@/shared/constants/copilotModelTokens.js";
+import { resolveInitialCliToolBaseUrl } from "@/shared/utils/cliToolEndpoint";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 
@@ -171,23 +172,36 @@ export default function ConfigGeneratorCard({
   tunnelPublicUrl,
   tailscaleEnabled,
   tailscaleUrl,
+  initialConfig,
+  onSaveConfig,
 }) {
-  const [selectedApiKey, setSelectedApiKey] = useState(() => apiKeys?.[0]?.key || "");
-  const [selectedModels, setSelectedModels] = useState([]);
-  const [claudeModels, setClaudeModels] = useState({ sonnet: "", opus: "", haiku: "" });
-  const [claudeThinking, setClaudeThinking] = useState({ sonnet: "", opus: "", haiku: "" });
+  const restoredApiKey = initialConfig?.apiKeyId
+    ? apiKeys.find((key) => key.id === initialConfig.apiKeyId)?.key || ""
+    : "";
+  const [selectedApiKey, setSelectedApiKey] = useState(() => (
+    initialConfig?.apiKeyMode === "custom"
+      ? ""
+      : initialConfig?.apiKeyId ? restoredApiKey : apiKeys?.[0]?.key || ""
+  ));
+  const [apiKeyMode, setApiKeyMode] = useState(() => initialConfig?.apiKeyMode || "managed");
+  const [selectedModels, setSelectedModels] = useState(() => initialConfig?.selectedModels || []);
+  const [claudeModels, setClaudeModels] = useState(() => initialConfig?.claudeModels || { sonnet: "", opus: "", haiku: "" });
+  const [claudeThinking, setClaudeThinking] = useState(() => initialConfig?.claudeThinking || { sonnet: "", opus: "", haiku: "" });
   const [claudeModelSlot, setClaudeModelSlot] = useState("");
-  const [codexModel, setCodexModel] = useState("");
-  const [codexThinking, setCodexThinking] = useState("");
-  const [opencodeModels, setOpencodeModels] = useState([]);
-  const [opencodeDefaultModel, setOpencodeDefaultModel] = useState("");
-  const [coworkThinking, setCoworkThinking] = useState({});
-  const [copilotTokens, setCopilotTokens] = useState({});
-  const [copilotThinking, setCopilotThinking] = useState({});
+  const [codexModel, setCodexModel] = useState(() => initialConfig?.codexModel || "");
+  const [codexThinking, setCodexThinking] = useState(() => initialConfig?.codexThinking || "");
+  const [opencodeModels, setOpencodeModels] = useState(() => initialConfig?.opencodeModels || []);
+  const [opencodeDefaultModel, setOpencodeDefaultModel] = useState(() => initialConfig?.opencodeDefaultModel || "");
+  const [coworkThinking, setCoworkThinking] = useState(() => initialConfig?.coworkThinking || {});
+  const [copilotTokens, setCopilotTokens] = useState(() => initialConfig?.copilotTokens || {});
+  const [copilotThinking, setCopilotThinking] = useState(() => initialConfig?.copilotThinking || {});
   const connectedModels = availableModels;
-  const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const [customBaseUrl, setCustomBaseUrl] = useState(() => resolveInitialCliToolBaseUrl(initialConfig?.baseUrl, baseUrl));
   const [modelModalOpen, setModelModalOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const [saveError, setSaveError] = useState("");
+  const initializedSaveState = useRef(false);
 
   const effectiveBaseUrl = customBaseUrl || baseUrl;
   const apiKey = toolId === "copilot"
@@ -197,6 +211,43 @@ export default function ConfigGeneratorCard({
     () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking, connectedModels: connectedModels || [] }),
     [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking, connectedModels]
   );
+
+  const buildPersistableConfig = () => {
+    const config = { baseUrl: effectiveBaseUrl };
+    if (toolId !== "copilot") {
+      config.apiKeyMode = apiKeyMode;
+      config.apiKeyId = apiKeyMode === "managed"
+        ? apiKeys.find((key) => key.key === selectedApiKey)?.id || null
+        : null;
+    }
+    if (toolId === "claude") Object.assign(config, { claudeModels, claudeThinking });
+    if (toolId === "codex") Object.assign(config, { codexModel, codexThinking });
+    if (toolId === "opencode") Object.assign(config, { opencodeModels, opencodeDefaultModel });
+    if (toolId === "cowork") Object.assign(config, { selectedModels, coworkThinking });
+    if (toolId === "copilot") Object.assign(config, { selectedModels, copilotThinking, copilotTokens });
+    return config;
+  };
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+    setSaveError("");
+    try {
+      await onSaveConfig(buildPersistableConfig());
+      setSaveStatus("saved");
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveError(error.message || "Failed to save configuration");
+    }
+  };
+
+  useEffect(() => {
+    if (!initializedSaveState.current) {
+      initializedSaveState.current = true;
+      return;
+    }
+    setSaveStatus((current) => current === "saving" ? current : "dirty");
+    setSaveError("");
+  }, [effectiveBaseUrl, apiKeyMode, selectedApiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking]);
 
   const getThinkingLevelsForModel = (fullModel) => {
     const connectedModel = connectedModels?.find((model) => model.fullModel === fullModel);
@@ -307,8 +358,9 @@ export default function ConfigGeneratorCard({
         <label className="flex flex-col gap-1.5 text-xs font-medium text-text-muted">
           Endpoint
           <BaseUrlSelect
-            value={customBaseUrl || baseUrl}
+            value={customBaseUrl}
             onChange={setCustomBaseUrl}
+            appUrl={baseUrl}
             tunnelEnabled={tunnelEnabled}
             tunnelPublicUrl={tunnelPublicUrl}
             tailscaleEnabled={tailscaleEnabled}
@@ -320,7 +372,7 @@ export default function ConfigGeneratorCard({
         {toolId !== "copilot" && (
           <label className="flex flex-col gap-1.5 text-xs font-medium text-text-muted">
             API key
-            <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} />
+            <ApiKeySelect value={selectedApiKey} onChange={setSelectedApiKey} apiKeys={apiKeys} cloudEnabled={cloudEnabled} mode={apiKeyMode} onModeChange={setApiKeyMode} />
           </label>
         )}
         {toolId === "claude" ? (
@@ -558,10 +610,20 @@ export default function ConfigGeneratorCard({
             ) : <p className="text-xs text-text-muted">No model selected. The generated file uses <code>{DEFAULT_MODEL}</code> as a placeholder.</p>}
           </div>
         )}
-        <Button onClick={() => setConfigModalOpen(true)} className="w-full sm:w-auto sm:self-start">
-          <span className="material-symbols-outlined mr-1 text-[16px]">code</span>
-          Show configuration file
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={handleSave} disabled={saveStatus === "saving"} variant="secondary" className="w-full sm:w-auto">
+            <span className="material-symbols-outlined mr-1 text-[16px]">{saveStatus === "saving" ? "progress_activity" : "save"}</span>
+            {saveStatus === "saving" ? "Saving..." : "Save"}
+          </Button>
+          <Button onClick={() => setConfigModalOpen(true)} className="w-full sm:w-auto">
+            <span className="material-symbols-outlined mr-1 text-[16px]">code</span>
+            Show configuration file
+          </Button>
+          {saveStatus === "saved" && <span className="text-xs text-green-600 dark:text-green-400">Configuration saved.</span>}
+          {saveStatus === "dirty" && <span className="text-xs text-text-muted">Unsaved changes</span>}
+          {saveStatus === "error" && <span className="text-xs text-red-600 dark:text-red-400">{saveError}</span>}
+        </div>
+        {apiKeyMode === "custom" && toolId !== "copilot" && <p className="text-xs text-amber-600 dark:text-amber-400">The custom API key is never saved and must be entered again after reload.</p>}
         <p className="text-xs text-text-muted">9Router cannot inspect, modify, or apply files on your device from a deployed dashboard.</p>
       </div>
 
