@@ -16,6 +16,9 @@ export default {
     headers: {
       "anthropic-version": "2023-06-01",
     },
+    usage: {
+      url: "https://api.orbit-provider.com/v1/usage",
+    },
   },
   models: [
     { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
@@ -24,6 +27,10 @@ export default {
     { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)" },
   ],
   serviceKinds: ["llm"],
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
   thinkingConfig: {
     options: ["auto", "on", "off"],
     defaultMode: "auto",

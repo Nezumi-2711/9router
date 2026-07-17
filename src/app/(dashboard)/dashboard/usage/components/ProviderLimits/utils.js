@@ -492,6 +492,24 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "orbit-provider":
+        // Orbit exposes both token usage and USD credit balance, but only the
+        // credit balance is useful in the quota dashboard. Keep token usage
+        // in the server response for diagnostics without rendering its row.
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            if (name !== "Credit (USD)") return;
+            normalizedQuotas.push({
+              name,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
+            });
+          });
+        }
+        break;
+
       default:
         // Generic fallback for unknown providers
         if (data.quotas) {
