@@ -155,6 +155,11 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
           })),
         }),
       }];
+    case "grok-build":
+      return [{
+        filename: "~/.grok/config.toml",
+        content: `[models]\ndefault = "9router"\n\n[model.9router]\nmodel = "${model}"\nbase_url = "${endpoint}"\nname = "9Router"\ndescription = "Routed via 9Router gateway"\napi_backend = "chat_completions"\napi_key = "${apiKey}"\n`,
+      }];
     default:
       return [{ filename: "config.json", content: toJson({ baseUrl: endpoint, apiKey, model }) }];
   }

@@ -62,6 +62,9 @@ export const MITM_TOOLS = {
       { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
       { id: "deepseek-3.2", name: "DeepSeek 3.2", alias: "deepseek-3.2" },
       { id: "minimax-m2.1", name: "MiniMax M2.1", alias: "minimax-m2.1" },
+      { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", alias: "gpt-5.6-sol", contextLength: 272000, rateMultiplier: 2.4 },
+      { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", alias: "gpt-5.6-terra", contextLength: 272000, rateMultiplier: 1.2 },
+      { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", alias: "gpt-5.6-luna", contextLength: 272000, rateMultiplier: 0.6 },
       { id: "simple-task", name: "Qwen3 Coder Next", alias: "simple-task" },
     ],
   },
@@ -160,6 +163,20 @@ export const CLI_TOOLS = {
     color: "#1F6FEB",
     description: "GitHub Copilot in VS Code via custom models",
     configType: "custom",
+  },
+  "grok-build": {
+    id: "grok-build",
+    name: "Grok Build",
+    image: "/providers/grok-cli.png",
+    color: "#1DA1F2",
+    description: "xAI Grok Build TUI coding agent",
+    configType: "custom",
+    docsUrl: "https://x.ai/cli",
+    defaultCommand: "grok",
+    notes: [
+      { type: "info", text: "Grok Build uses ~/.grok/config.toml with a custom 9Router model." },
+      { type: "warning", text: "Config path: Linux/macOS ~/.grok/config.toml • Windows %USERPROFILE%\\.grok\\config.toml" },
+    ],
   },
   // HIDDEN: gemini-cli
   // "gemini-cli": {

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getSettings, getCombos, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
-import { runQuotaAutoPingTick } from "@/shared/services/quotaAutoPing";
 import { requireCurrentDashboardUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
 import { updateUser } from "@/lib/db";
 
@@ -56,6 +55,7 @@ export async function GET() {
   try {
     const settings = await getSettings();
     const { password, oidcClientSecret, ...safeSettings } = settings;
+    safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     const user = await requireUsageDashboardUser();
     if (user.role !== "admin") {
       for (const key of USER_RESTRICTED_SETTING_KEYS) delete safeSettings[key];
@@ -159,10 +159,12 @@ export async function PATCH(request) {
       Object.prototype.hasOwnProperty.call(body, "claudeAutoPing") ||
       Object.prototype.hasOwnProperty.call(body, "codexAutoPing")
     ) {
-      // Run once immediately after opt-in changes so users don't wait for the next scheduler tick.
-      runQuotaAutoPingTick().catch((error) => {
-        console.warn("[AutoPing] settings-triggered tick failed:", error.message);
-      });
+      // Keep the scheduler absent when no account opted in; load its provider graph only on demand.
+      import("@/shared/services/quotaAutoPing")
+        .then(({ configureQuotaAutoPing }) => {
+          configureQuotaAutoPing(settings);
+        })
+        .catch((error) => console.warn("[AutoPing] settings update failed:", error.message));
     }
 
     const { password, oidcClientSecret, ...safeSettings } = settings;

@@ -4,10 +4,11 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { planBulkAdd } from "@/shared/utils/bulkAdd";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, existingNames, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -131,39 +132,30 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   };
 
   const handleBulkSubmit = async () => {
-    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    const lines = bulkText.split("\n");
     if (!lines.length) return;
+    // Plan collision-free names against existing connections so a generated
+    // "Key N" never matches a saved name (which the backend would upsert /
+    // overwrite instead of inserting). See bulkAdd.js for the full rationale.
+    const plan = planBulkAdd(lines, existingNames, { isCloudflareAi });
+    if (!plan.length) return;
     setSaving(true);
     setBulkResult(null);
     let success = 0;
     let failed = 0;
     const duplicateLines = [];
-    for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split("|");
-      const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
-      const name = `${baseName} ${i + 1}`;
-
-      let apiKey;
-      let providerSpecificData;
-      if (isCloudflareAi && parts.length >= 3) {
-        // Format: name|apiKey|accountId
-        apiKey = parts.slice(1, -1).join("|").trim();
-        providerSpecificData = { accountId: parts[parts.length - 1].trim() };
-      } else {
-        apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
-      }
-
+    for (const entry of plan) {
       try {
         const res = await fetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             provider,
-            apiKey,
-            name,
+            apiKey: entry.apiKey,
+            name: entry.name,
             priority: 1,
             testStatus: "unknown",
-            ...(providerSpecificData ? { providerSpecificData } : {}),
+            ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
           }),
         });
         if (res.ok) {
@@ -171,8 +163,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         } else {
           failed++;
           const data = await res.json().catch(() => null);
-          if (res.status === 409) duplicateLines.push(i + 1);
-          if (data?.error) console.log(`Bulk API key add failed on line ${i + 1}:`, data.error);
+          if (res.status === 409) duplicateLines.push(entry.lineNumber);
+          if (data?.error) console.log(`Bulk API key add failed on line ${entry.lineNumber}:`, data.error);
         }
       } catch {
         failed++;
@@ -423,6 +415,7 @@ AddApiKeyModal.propTypes = {
     name: PropTypes.string,
   })),
   error: PropTypes.string,
+  existingNames: PropTypes.arrayOf(PropTypes.string),
   onSave: PropTypes.func.isRequired,
   onBulkDone: PropTypes.func,
   onClose: PropTypes.func.isRequired,
