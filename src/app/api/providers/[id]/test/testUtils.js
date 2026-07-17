@@ -19,6 +19,7 @@ import {
   KIMCHI_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { validateConfiguredClaudeApiKey } from "@/lib/providers/apiKeyValidation";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -526,6 +527,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
   }
 
   try {
+    const configuredClaudeResult = await validateConfiguredClaudeApiKey(
+      connection.provider,
+      connection.apiKey,
+      (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+    );
+    if (configuredClaudeResult !== null) return configuredClaudeResult;
+
     switch (connection.provider) {
       case "cloudflare-ai": {
         const psd = connection.providerSpecificData || {};

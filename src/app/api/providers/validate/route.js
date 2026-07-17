@@ -6,6 +6,7 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { requireProviderAdministrator } from "@/lib/providers/connectionAccess";
+import { validateConfiguredClaudeApiKey } from "@/lib/providers/apiKeyValidation";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -251,6 +252,13 @@ export async function POST(request) {
           valid: mediaResult,
           error: mediaResult ? null : "Invalid API key",
         });
+      }
+
+      // Registry-backed Anthropic-compatible providers share one config-driven
+      // validation flow instead of requiring a hardcoded switch case.
+      const claudeResult = await validateConfiguredClaudeApiKey(provider, apiKey);
+      if (claudeResult !== null) {
+        return NextResponse.json(claudeResult);
       }
 
       switch (provider) {

@@ -1,6 +1,7 @@
 # v0.5.35 (2026-07-16)
 
 ## Features
+- **Orbit Provider**: add Anthropic-compatible API-key routing for Claude Opus 4.6–4.8 models
 - **xAI**: Grok Imagine video generation (`/v1/videos`) + CLI
 - **CLI tools**: Grok Build setup — writes `[model.9router]` to `~/.grok/config.toml`
 - **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages`
