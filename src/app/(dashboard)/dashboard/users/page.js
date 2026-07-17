@@ -6,26 +6,12 @@ import { Button, Card, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import useUserStore from "@/store/userStore";
 import { formatVietnamDateTime } from "@/shared/utils/dateTime";
-import {
-  USER_TOKEN_LIMIT_PROVIDERS,
-  USER_TOKEN_LIMIT_WINDOWS,
-} from "open-sse/config/userTokenLimits.js";
+import { USER_TOKEN_LIMIT_WINDOWS } from "open-sse/config/userTokenLimits.js";
+import QuotaCell from "./components/QuotaCell";
+import TokenLimitsUsage from "./components/TokenLimitsUsage";
+import { TOKEN_LIMIT_PROVIDER_OPTIONS } from "./components/tokenLimitDisplay.js";
 
 const EMPTY_FORM = { username: "", password: "", role: "user", isActive: true };
-const TOKEN_LIMIT_PROVIDER_OPTIONS = [
-  {
-    id: USER_TOKEN_LIMIT_PROVIDERS.ORBIT,
-    name: "Orbit Provider",
-    description: "Anthropic-compatible traffic routed through Orbit.",
-    icon: "orbit",
-  },
-  {
-    id: USER_TOKEN_LIMIT_PROVIDERS.CODEX,
-    name: "Codex",
-    description: "OpenAI Codex responses and coding sessions.",
-    icon: "terminal",
-  },
-];
 
 function createEmptyTokenLimits() {
   return Object.fromEntries(TOKEN_LIMIT_PROVIDER_OPTIONS.map(({ id }) => [
@@ -58,6 +44,7 @@ export default function UsersPage() {
   const [limitsLoading, setLimitsLoading] = useState(false);
   const [limitsSaving, setLimitsSaving] = useState(false);
   const [limitsError, setLimitsError] = useState("");
+  const [quotaRefreshKey, setQuotaRefreshKey] = useState(0);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -192,6 +179,7 @@ export default function UsersPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to save token limits");
+      setQuotaRefreshKey((current) => current + 1);
       setLimitEditor(null);
     } catch (requestError) {
       setLimitsError(requestError.message || "Failed to save token limits");
@@ -228,20 +216,24 @@ export default function UsersPage() {
                 <th className="px-5 py-3 font-medium">Username</th>
                 <th className="px-5 py-3 font-medium">Role</th>
                 <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Quota remaining</th>
                 <th className="px-5 py-3 font-medium">Created</th>
                 <th className="px-5 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {loading ? (
-                <tr><td colSpan="5" className="px-5 py-12 text-center text-text-muted">Loading users…</td></tr>
+                <tr><td colSpan="6" className="px-5 py-12 text-center text-text-muted">Loading users…</td></tr>
               ) : users.length === 0 ? (
-                <tr><td colSpan="5" className="px-5 py-12 text-center text-text-muted">No users found.</td></tr>
+                <tr><td colSpan="6" className="px-5 py-12 text-center text-text-muted">No users found.</td></tr>
               ) : users.map((entry) => (
                 <tr key={entry.id} className="transition-colors hover:bg-surface-2/40">
                   <td className="px-5 py-4 font-medium text-text-main">{entry.username}{entry.id === user.id ? <span className="ml-2 text-xs font-normal text-text-muted">(you)</span> : null}</td>
                   <td className="px-5 py-4"><span className={`rounded-full px-2 py-1 text-xs font-medium ${entry.role === "admin" ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"}`}>{entry.role}</span></td>
                   <td className="px-5 py-4"><span className={entry.isActive ? "text-emerald-600 dark:text-emerald-400" : "text-text-muted"}>{entry.isActive ? "Active" : "Disabled"}</span></td>
+                  <td className="px-5 py-4">
+                    {entry.role === "user" ? <QuotaCell userId={entry.id} refreshKey={quotaRefreshKey} /> : <span className="text-xs text-text-muted">—</span>}
+                  </td>
                   <td className="px-5 py-4 text-text-muted">{formatDate(entry.createdAt)}</td>
                   <td className="px-5 py-4 text-right">
                     <div className="flex justify-end gap-2">
@@ -274,10 +266,11 @@ export default function UsersPage() {
       <Modal
         isOpen={!!limitEditor}
         onClose={() => !limitsSaving && setLimitEditor(null)}
-        title={`Token limits · ${limitEditor?.username || "user"}`}
+        title={`Usage & limits · ${limitEditor?.username || "user"}`}
+        size="xl"
         footer={<><Button variant="ghost" onClick={() => setLimitEditor(null)} disabled={limitsSaving}>Cancel</Button><Button variant="primary" onClick={saveTokenLimits} loading={limitsSaving} disabled={limitsLoading}>Save limits</Button></>}
       >
-        <div className="space-y-5">
+        <div className="space-y-6">
           <div className="rounded-xl border border-brand-500/20 bg-brand-500/5 px-4 py-3">
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined mt-0.5 text-[20px] text-brand-500">hourglass_top</span>
@@ -290,10 +283,24 @@ export default function UsersPage() {
 
           {limitsError ? <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{limitsError}</p> : null}
 
+          {limitEditor ? (
+            <section className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Current headroom</p>
+                <p className="mt-1 text-sm text-text-muted">The lowest active window determines the quota shown in the users table.</p>
+              </div>
+              <TokenLimitsUsage userId={limitEditor.id} refreshKey={quotaRefreshKey} />
+            </section>
+          ) : null}
+
           {limitsLoading ? (
             <div className="py-10 text-center text-sm text-text-muted">Loading token limits…</div>
           ) : (
-            <div className="space-y-3">
+            <section className="space-y-3 border-t border-border-subtle pt-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Budget settings</p>
+                <p className="mt-1 text-sm text-text-muted">Set 0 to leave a provider window unlimited.</p>
+              </div>
               {TOKEN_LIMIT_PROVIDER_OPTIONS.map((provider) => (
                 <section key={provider.id} className="rounded-xl border border-border-subtle bg-surface-2/35 p-4">
                   <div className="mb-4 flex items-center gap-3">
@@ -333,7 +340,7 @@ export default function UsersPage() {
                   </div>
                 </section>
               ))}
-            </div>
+            </section>
           )}
         </div>
       </Modal>
