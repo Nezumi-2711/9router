@@ -34,13 +34,15 @@ describe("Schema migrations", () => {
 
     const tables = db.all(`SELECT name FROM sqlite_master WHERE type='table'`).map(t => t.name);
     expect(tables).toEqual(expect.arrayContaining([
-      "_meta", "settings", "providerConnections", "providerNodes",
+      "_meta", "settings", "users", "userTokenLimits", "providerConnections", "providerNodes",
       "proxyPools", "apiKeys", "combos", "kv", "usageHistory", "usageDaily", "requestDetails",
     ]));
     expect(db.all(`PRAGMA table_info(providerConnections)`).map((column) => column.name)).toContain("ownerId");
     expect(db.all(`PRAGMA index_list(providerConnections)`).map((index) => index.name)).toContain("idx_pc_owner");
     expect(db.all(`PRAGMA table_info(combos)`).map((column) => column.name)).toContain("ownerId");
     expect(db.all(`PRAGMA index_list(combos)`).map((index) => index.name)).toContain("idx_combo_owner_name");
+    expect(db.all(`PRAGMA index_list(userTokenLimits)`).map((index) => index.name)).toContain("idx_user_token_limits_user");
+    expect(db.all(`PRAGMA index_list(usageHistory)`).map((index) => index.name)).toContain("idx_uh_user_provider_ts");
   });
 
   it("existing DB at older schemaVersion → re-applies pending migrations on restart", async () => {

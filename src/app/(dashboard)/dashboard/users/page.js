@@ -6,8 +6,36 @@ import { Button, Card, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import useUserStore from "@/store/userStore";
 import { formatVietnamDateTime } from "@/shared/utils/dateTime";
+import {
+  USER_TOKEN_LIMIT_PROVIDERS,
+  USER_TOKEN_LIMIT_WINDOWS,
+} from "open-sse/config/userTokenLimits.js";
 
 const EMPTY_FORM = { username: "", password: "", role: "user", isActive: true };
+const TOKEN_LIMIT_PROVIDER_OPTIONS = [
+  {
+    id: USER_TOKEN_LIMIT_PROVIDERS.ORBIT,
+    name: "Orbit Provider",
+    description: "Anthropic-compatible traffic routed through Orbit.",
+    icon: "orbit",
+  },
+  {
+    id: USER_TOKEN_LIMIT_PROVIDERS.CODEX,
+    name: "Codex",
+    description: "OpenAI Codex responses and coding sessions.",
+    icon: "terminal",
+  },
+];
+
+function createEmptyTokenLimits() {
+  return Object.fromEntries(TOKEN_LIMIT_PROVIDER_OPTIONS.map(({ id }) => [
+    id,
+    {
+      [USER_TOKEN_LIMIT_WINDOWS.SESSION]: 0,
+      [USER_TOKEN_LIMIT_WINDOWS.WEEKLY]: 0,
+    },
+  ]));
+}
 
 function formatDate(value) {
   if (!value) return "—";
@@ -25,6 +53,11 @@ export default function UsersPage() {
   const [editor, setEditor] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [limitEditor, setLimitEditor] = useState(null);
+  const [tokenLimits, setTokenLimits] = useState(createEmptyTokenLimits);
+  const [limitsLoading, setLimitsLoading] = useState(false);
+  const [limitsSaving, setLimitsSaving] = useState(false);
+  const [limitsError, setLimitsError] = useState("");
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -113,6 +146,60 @@ export default function UsersPage() {
     }
   };
 
+  const openTokenLimits = async (target) => {
+    setLimitEditor(target);
+    setTokenLimits(createEmptyTokenLimits());
+    setLimitsError("");
+    setLimitsLoading(true);
+    try {
+      const response = await fetch(`/api/users/${target.id}/token-limits`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to load token limits");
+      setTokenLimits(data.limits || createEmptyTokenLimits());
+    } catch (requestError) {
+      setLimitsError(requestError.message || "Failed to load token limits");
+    } finally {
+      setLimitsLoading(false);
+    }
+  };
+
+  const updateTokenLimit = (provider, windowType, value) => {
+    setTokenLimits((current) => ({
+      ...current,
+      [provider]: {
+        ...current[provider],
+        [windowType]: value,
+      },
+    }));
+  };
+
+  const saveTokenLimits = async () => {
+    if (!limitEditor) return;
+    setLimitsSaving(true);
+    setLimitsError("");
+    try {
+      const normalizedLimits = Object.fromEntries(TOKEN_LIMIT_PROVIDER_OPTIONS.map(({ id }) => [
+        id,
+        {
+          [USER_TOKEN_LIMIT_WINDOWS.SESSION]: Number(tokenLimits[id]?.session || 0),
+          [USER_TOKEN_LIMIT_WINDOWS.WEEKLY]: Number(tokenLimits[id]?.weekly || 0),
+        },
+      ]));
+      const response = await fetch(`/api/users/${limitEditor.id}/token-limits`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limits: normalizedLimits }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to save token limits");
+      setLimitEditor(null);
+    } catch (requestError) {
+      setLimitsError(requestError.message || "Failed to save token limits");
+    } finally {
+      setLimitsSaving(false);
+    }
+  };
+
   if (!user || user.role !== "admin") {
     return <div className="py-12 text-center text-text-muted">Loading user management…</div>;
   }
@@ -158,6 +245,7 @@ export default function UsersPage() {
                   <td className="px-5 py-4 text-text-muted">{formatDate(entry.createdAt)}</td>
                   <td className="px-5 py-4 text-right">
                     <div className="flex justify-end gap-2">
+                      {entry.role === "user" ? <Button variant="ghost" size="sm" onClick={() => openTokenLimits(entry)}>Token limits</Button> : null}
                       <Button variant="ghost" size="sm" onClick={() => openEdit(entry)}>Edit</Button>
                       <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => setDeleteTarget(entry)} disabled={entry.id === user.id}>Delete</Button>
                     </div>
@@ -181,6 +269,73 @@ export default function UsersPage() {
           <div className="space-y-2"><label className="text-sm font-medium">Role</label><select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))} className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-text-main"><option value="user">User</option><option value="admin">Administrator</option></select></div>
           {editor?.mode === "edit" ? <label className="flex items-center gap-2 text-sm text-text-main"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} /> Account is active</label> : null}
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!limitEditor}
+        onClose={() => !limitsSaving && setLimitEditor(null)}
+        title={`Token limits · ${limitEditor?.username || "user"}`}
+        footer={<><Button variant="ghost" onClick={() => setLimitEditor(null)} disabled={limitsSaving}>Cancel</Button><Button variant="primary" onClick={saveTokenLimits} loading={limitsSaving} disabled={limitsLoading}>Save limits</Button></>}
+      >
+        <div className="space-y-5">
+          <div className="rounded-xl border border-brand-500/20 bg-brand-500/5 px-4 py-3">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined mt-0.5 text-[20px] text-brand-500">hourglass_top</span>
+              <div>
+                <p className="text-sm font-medium text-text-main">Total token budgets</p>
+                <p className="mt-1 text-xs leading-5 text-text-muted">Usage includes input and output tokens. Session usage is measured over the previous 5 hours; weekly usage resets Monday at 00:00 Vietnam time. Enter 0 for unlimited.</p>
+              </div>
+            </div>
+          </div>
+
+          {limitsError ? <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{limitsError}</p> : null}
+
+          {limitsLoading ? (
+            <div className="py-10 text-center text-sm text-text-muted">Loading token limits…</div>
+          ) : (
+            <div className="space-y-3">
+              {TOKEN_LIMIT_PROVIDER_OPTIONS.map((provider) => (
+                <section key={provider.id} className="rounded-xl border border-border-subtle bg-surface-2/35 p-4">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-lg border border-border-subtle bg-surface text-brand-500 shadow-sm">
+                      <span className="material-symbols-outlined text-[21px]">{provider.icon}</span>
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold text-text-main">{provider.name}</h2>
+                      <p className="text-xs text-text-muted">{provider.description}</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-text-muted">Session · 5 hours</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        value={tokenLimits[provider.id]?.[USER_TOKEN_LIMIT_WINDOWS.SESSION] ?? 0}
+                        onChange={(event) => updateTokenLimit(provider.id, USER_TOKEN_LIMIT_WINDOWS.SESSION, event.target.value)}
+                        aria-label={`${provider.name} session token limit`}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium uppercase tracking-wide text-text-muted">Weekly</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        value={tokenLimits[provider.id]?.[USER_TOKEN_LIMIT_WINDOWS.WEEKLY] ?? 0}
+                        onChange={(event) => updateTokenLimit(provider.id, USER_TOKEN_LIMIT_WINDOWS.WEEKLY, event.target.value)}
+                        aria-label={`${provider.name} weekly token limit`}
+                      />
+                    </div>
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
       </Modal>
 
       <ConfirmModal

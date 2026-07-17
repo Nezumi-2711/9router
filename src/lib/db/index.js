@@ -2,6 +2,13 @@
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { normalizeCliToolConfig, isPersistableCliTool } from "@/shared/constants/cliToolConfig.js";
+import {
+  USER_TOKEN_LIMIT_PROVIDER_IDS,
+  USER_TOKEN_LIMIT_WINDOW_IDS,
+} from "open-sse/config/userTokenLimits.js";
+
+const userTokenLimitProviderSet = new Set(USER_TOKEN_LIMIT_PROVIDER_IDS);
+const userTokenLimitWindowSet = new Set(USER_TOKEN_LIMIT_WINDOW_IDS);
 
 // Settings
 export {
@@ -52,6 +59,12 @@ export {
   upsertCliToolConfig, deleteCliToolConfigsByOwnerId,
 } from "./repos/cliToolConfigsRepo.js";
 
+// Per-user provider token limits
+export {
+  createEmptyUserTokenLimits, getUserTokenLimits,
+  replaceUserTokenLimits, getUserProviderTokenUsageSince,
+} from "./repos/userTokenLimitsRepo.js";
+
 // Aliases (model + custom + mitm)
 export {
   getModelAliases, setModelAlias, deleteModelAlias,
@@ -95,6 +108,7 @@ export async function exportDb() {
     apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => ({ id: r.id, key: r.key, name: r.name, machineId: r.machineId, ownerId: r.ownerId, isActive: r.isActive === 1, createdAt: r.createdAt })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, ownerId: r.ownerId, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
     cliToolConfigs: db.all(`SELECT * FROM cliToolConfigs`).map((r) => ({ ownerId: r.ownerId, toolId: r.toolId, config: parseJson(r.data, {}), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+    userTokenLimits: db.all(`SELECT userId, provider, windowType, tokenLimit, createdAt, updatedAt FROM userTokenLimits`),
     modelAliases: {},
     customModels: [],
     mitmAlias: {},
@@ -130,6 +144,7 @@ export async function importDb(payload) {
     // Wipe all tables (keep _meta)
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM cliToolConfigs`);
+    db.run(`DELETE FROM userTokenLimits`);
     // Old backups predate multi-user authentication. Preserve the local
     // administrator unless the payload explicitly carries a users array.
     if (Array.isArray(payload.users)) db.run(`DELETE FROM users`);
@@ -153,6 +168,19 @@ export async function importDb(payload) {
           [user.id, user.username, user.password, user.role, user.isActive === false ? 0 : 1, user.createdAt || new Date().toISOString(), user.updatedAt || new Date().toISOString()]
         );
       }
+    }
+
+    const importedUserIds = new Set(db.all(`SELECT id FROM users`).map((user) => user.id));
+    for (const limit of payload.userTokenLimits || []) {
+      if (!importedUserIds.has(limit?.userId)) continue;
+      if (!userTokenLimitProviderSet.has(limit.provider) || !userTokenLimitWindowSet.has(limit.windowType)) continue;
+      const tokenLimit = Number(limit.tokenLimit);
+      if (!Number.isSafeInteger(tokenLimit) || tokenLimit <= 0) continue;
+      db.run(
+        `INSERT OR REPLACE INTO userTokenLimits(userId, provider, windowType, tokenLimit, createdAt, updatedAt)
+         VALUES(?, ?, ?, ?, ?, ?)`,
+        [limit.userId, limit.provider, limit.windowType, tokenLimit, limit.createdAt || new Date().toISOString(), limit.updatedAt || new Date().toISOString()],
+      );
     }
 
     const adminOwnerIds = new Set(

@@ -26,6 +26,7 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { getDisabledModelResponse } from "../services/disabledModels.js";
+import { checkUserTokenLimit } from "@/lib/tokenLimitEnforcer.js";
 
 /**
  * Handle chat completion request
@@ -202,6 +203,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const disabledModelResponse = await getDisabledModelResponse(provider, model);
   if (disabledModelResponse) return disabledModelResponse;
+
+  const tokenLimitResult = await checkUserTokenLimit(ownerId, provider);
+  if (tokenLimitResult) {
+    const { windowType, limit, used } = tokenLimitResult;
+    const message = `Token limit exceeded: ${windowType} limit of ${limit} tokens reached (${used} used)`;
+    log.warn("TOKEN_LIMIT", message, { userId: ownerId, provider, windowType, limit, used });
+    return errorResponse(HTTP_STATUS.RATE_LIMITED, message);
+  }
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 

@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -134,6 +134,20 @@ export const TABLES = {
     primaryKey: "PRIMARY KEY (ownerId, toolId)",
     indexes: ["CREATE INDEX IF NOT EXISTS idx_cli_tool_configs_owner ON cliToolConfigs(ownerId)"],
   },
+  userTokenLimits: {
+    columns: {
+      userId: "TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE",
+      provider: "TEXT NOT NULL",
+      windowType: "TEXT NOT NULL",
+      tokenLimit: "INTEGER NOT NULL DEFAULT 0",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (userId, provider, windowType)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_user_token_limits_user ON userTokenLimits(userId)",
+    ],
+  },
   kv: {
     columns: {
       scope: "TEXT NOT NULL",
@@ -166,6 +180,7 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
       "CREATE INDEX IF NOT EXISTS idx_uh_user ON usageHistory(userId)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_user_provider_ts ON usageHistory(userId, provider, timestamp)",
     ],
   },
   usageDaily: {
