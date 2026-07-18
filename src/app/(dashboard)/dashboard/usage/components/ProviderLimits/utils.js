@@ -211,15 +211,17 @@ export function setQuotaCache(connectionId, quotaEntry) {
 /**
  * Format ISO date string to countdown format (inspired by vscode-antigravity-cockpit)
  * @param {string|Date} date - ISO date string or Date object
+ * @param {string|Date|number} now - Current time, injectable for live countdowns
  * @returns {string} Formatted countdown (e.g., "2d 5h 30m", "4h 40m", "15m") or "-"
  */
-export function formatResetTime(date) {
+export function formatResetTime(date, now = new Date()) {
   if (!date) return "-";
 
   try {
     const resetDate = typeof date === "string" ? new Date(date) : date;
-    const now = new Date();
-    const diffMs = resetDate - now;
+    const currentTime = now instanceof Date ? now : new Date(now);
+    if (!Number.isFinite(resetDate.getTime()) || !Number.isFinite(currentTime.getTime())) return "-";
+    const diffMs = resetDate - currentTime;
 
     if (diffMs <= 0) return "-";
 

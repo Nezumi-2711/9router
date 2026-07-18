@@ -9,7 +9,11 @@ import { formatVietnamDateTime } from "@/shared/utils/dateTime";
 import { USER_TOKEN_LIMIT_WINDOWS } from "open-sse/config/userTokenLimits.js";
 import QuotaCell from "./components/QuotaCell";
 import TokenLimitsUsage from "./components/TokenLimitsUsage";
-import { TOKEN_LIMIT_PROVIDER_OPTIONS } from "./components/tokenLimitDisplay.js";
+import {
+  TOKEN_LIMIT_PROVIDER_OPTIONS,
+  TOKEN_LIMIT_WINDOW_OPTIONS,
+  formatTokenCount,
+} from "./components/tokenLimitDisplay.js";
 
 const EMPTY_FORM = { username: "", password: "", role: "user", isActive: true };
 
@@ -26,6 +30,81 @@ function createEmptyTokenLimits() {
 function formatDate(value) {
   if (!value) return "—";
   return formatVietnamDateTime(value, { dateStyle: "medium", timeStyle: "short" }) || "—";
+}
+
+function normalizeTokenLimitInput(value) {
+  return value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+}
+
+function getTokenLimitNumber(value) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function TokenLimitField({ provider, windowOption, value, onChange }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value ?? ""));
+  const limit = getTokenLimitNumber(value);
+  const isUnlimited = limit === 0;
+  const inputId = `${provider.id}-${windowOption.id}-token-limit`;
+  const descriptionId = `${inputId}-description`;
+
+  const handleChange = (event) => {
+    const nextValue = normalizeTokenLimitInput(event.target.value);
+    setDraft(nextValue);
+    onChange(nextValue);
+  };
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    if (!draft) onChange(0);
+  };
+
+  return (
+    <section className="rounded-xl border border-border-subtle bg-surface p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
+            <span className="material-symbols-outlined text-[19px]">{windowOption.id === USER_TOKEN_LIMIT_WINDOWS.SESSION ? "schedule" : "date_range"}</span>
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-text-main">{windowOption.name}</h3>
+            <p className="mt-0.5 text-xs text-text-muted">{windowOption.description}</p>
+          </div>
+        </div>
+        <span className={`shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold ${isUnlimited ? "bg-surface-2 text-text-muted" : "bg-brand-500/10 text-brand-500"}`}>
+          {isUnlimited ? "Unlimited" : "Limited"}
+        </span>
+      </div>
+
+      <div className="mt-7">
+        <div className="flex items-center justify-between gap-3">
+          <label htmlFor={inputId} className="text-sm font-medium text-text-main">Token budget</label>
+          <p className="text-xs text-text-muted" aria-live="polite">{isUnlimited ? "No usage cap" : `${formatTokenCount(limit)} tokens`}</p>
+        </div>
+        <div className="relative mt-1.5">
+          <Input
+            id={inputId}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={isEditing ? draft : formatTokenCount(limit)}
+            onFocus={() => {
+              setDraft(String(value ?? ""));
+              setIsEditing(true);
+            }}
+            onBlur={handleBlur}
+            onChange={handleChange}
+            aria-describedby={descriptionId}
+            aria-label={`${provider.name} ${windowOption.name.toLowerCase()} token limit`}
+            inputClassName="h-12 pr-20 font-mono text-lg font-semibold tabular-nums"
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-medium text-text-muted">tokens</span>
+        </div>
+        <p id={descriptionId} className="mt-2 text-xs leading-5 text-text-muted">Enter <span className="font-mono tabular-nums">0</span> to leave this window unlimited.</p>
+      </div>
+    </section>
+  );
 }
 
 export default function UsersPage() {
@@ -45,6 +124,9 @@ export default function UsersPage() {
   const [limitsSaving, setLimitsSaving] = useState(false);
   const [limitsError, setLimitsError] = useState("");
   const [quotaRefreshKey, setQuotaRefreshKey] = useState(0);
+  const activeTokenLimitCount = TOKEN_LIMIT_PROVIDER_OPTIONS.reduce((count, provider) => (
+    count + TOKEN_LIMIT_WINDOW_OPTIONS.filter(({ id }) => getTokenLimitNumber(tokenLimits[provider.id]?.[id]) > 0).length
+  ), 0);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -267,7 +349,7 @@ export default function UsersPage() {
         isOpen={!!limitEditor}
         onClose={() => !limitsSaving && setLimitEditor(null)}
         title={`Usage & limits · ${limitEditor?.username || "user"}`}
-        size="xl"
+        size="full"
         footer={<><Button variant="ghost" onClick={() => setLimitEditor(null)} disabled={limitsSaving}>Cancel</Button><Button variant="primary" onClick={saveTokenLimits} loading={limitsSaving} disabled={limitsLoading}>Save limits</Button></>}
       >
         <div className="space-y-6">
@@ -297,13 +379,19 @@ export default function UsersPage() {
             <div className="py-10 text-center text-sm text-text-muted">Loading token limits…</div>
           ) : (
             <section className="space-y-3 border-t border-border-subtle pt-6">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Budget settings</p>
-                <p className="mt-1 text-sm text-text-muted">Set 0 to leave a provider window unlimited.</p>
+              <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface-2/35 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-500">Budget settings</p>
+                  <p className="mt-1 text-sm text-text-muted">Enter an exact token budget for each usage window. Set 0 for unlimited.</p>
+                </div>
+                <div className="shrink-0 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-right">
+                  <p className="font-mono text-lg font-semibold leading-none text-text-main tabular-nums">{activeTokenLimitCount}<span className="text-sm text-text-muted"> / {TOKEN_LIMIT_PROVIDER_OPTIONS.length * TOKEN_LIMIT_WINDOW_OPTIONS.length}</span></p>
+                  <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">active budgets</p>
+                </div>
               </div>
               {TOKEN_LIMIT_PROVIDER_OPTIONS.map((provider) => (
-                <section key={provider.id} className="rounded-xl border border-border-subtle bg-surface-2/35 p-4">
-                  <div className="mb-4 flex items-center gap-3">
+                <section key={provider.id} className="rounded-xl border border-border-subtle bg-surface-2/35 p-5">
+                  <div className="mb-5 flex items-center gap-3">
                     <div className="flex size-10 items-center justify-center rounded-lg border border-border-subtle bg-surface text-brand-500 shadow-sm">
                       <span className="material-symbols-outlined text-[21px]">{provider.icon}</span>
                     </div>
@@ -312,31 +400,16 @@ export default function UsersPage() {
                       <p className="text-xs text-text-muted">{provider.description}</p>
                     </div>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-text-muted">Session · 5 hours</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        inputMode="numeric"
-                        value={tokenLimits[provider.id]?.[USER_TOKEN_LIMIT_WINDOWS.SESSION] ?? 0}
-                        onChange={(event) => updateTokenLimit(provider.id, USER_TOKEN_LIMIT_WINDOWS.SESSION, event.target.value)}
-                        aria-label={`${provider.name} session token limit`}
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {TOKEN_LIMIT_WINDOW_OPTIONS.map((windowOption) => (
+                      <TokenLimitField
+                        key={windowOption.id}
+                        provider={provider}
+                        windowOption={windowOption}
+                        value={tokenLimits[provider.id]?.[windowOption.id] ?? 0}
+                        onChange={(value) => updateTokenLimit(provider.id, windowOption.id, value)}
                       />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-text-muted">Weekly</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        inputMode="numeric"
-                        value={tokenLimits[provider.id]?.[USER_TOKEN_LIMIT_WINDOWS.WEEKLY] ?? 0}
-                        onChange={(event) => updateTokenLimit(provider.id, USER_TOKEN_LIMIT_WINDOWS.WEEKLY, event.target.value)}
-                        aria-label={`${provider.name} weekly token limit`}
-                      />
-                    </div>
+                    ))}
                   </div>
                 </section>
               ))}

@@ -38,6 +38,9 @@ function quota(sessionLimit, sessionUsed, weeklyLimit, weeklyUsed) {
     remainingPercentage: limit > 0 ? Math.round((Math.max(0, limit - used) / limit) * 100) : null,
     isUnlimited: limit === 0,
     windowStart,
+    resetAt: windowStart === "2026-07-17T05:00:00.000Z"
+      ? "2026-07-17T10:00:00.000Z"
+      : "2026-07-20T17:00:00.000Z",
   });
 
   return {
@@ -92,8 +95,14 @@ describe("/api/usage/system-quota personal token quota overlay", () => {
     expect(providerById(payload, "codex").accountCount).toBeUndefined();
     expect(providerById(payload, "codex").quotaAccountCount).toBeUndefined();
     expect(providerById(payload, "codex").quotas).toMatchObject([
-      { name: "Session", tokenBudget: true, limit: 100, used: 25, remaining: 75, remainingPercentage: 75 },
-      { name: "Weekly", tokenBudget: true, limit: 1000, used: 200, remaining: 800, remainingPercentage: 80 },
+      {
+        name: "Session", tokenBudget: true, limit: 100, used: 25,
+        remaining: 75, remainingPercentage: 75, resetAt: "2026-07-17T10:00:00.000Z",
+      },
+      {
+        name: "Weekly", tokenBudget: true, limit: 1000, used: 200,
+        remaining: 800, remainingPercentage: 80, resetAt: "2026-07-20T17:00:00.000Z",
+      },
     ]);
     expect(providerById(payload, "orbit-provider").quotas).toMatchObject([
       { name: "Session", tokenBudget: true, limit: 100, used: 25 },

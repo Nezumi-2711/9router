@@ -1,4 +1,5 @@
 import {
+  getUserProviderEarliestTokenUsageSince,
   getUserProviderTokenUsageSince,
   getUserTokenLimits,
 } from "@/lib/db/index.js";
@@ -6,6 +7,9 @@ import { getUserTokenLimitWindowStart } from "@/lib/tokenLimitEnforcer.js";
 import {
   USER_TOKEN_LIMIT_PROVIDER_IDS,
   USER_TOKEN_LIMIT_WINDOW_IDS,
+  USER_TOKEN_LIMIT_SESSION_MS,
+  USER_TOKEN_LIMIT_WEEKLY_MS,
+  USER_TOKEN_LIMIT_WINDOWS,
 } from "open-sse/config/userTokenLimits.js";
 
 function normalizeNonNegativeNumber(value) {
@@ -33,6 +37,19 @@ export function buildUserTokenQuotaWindow(limit, used, windowStart) {
   };
 }
 
+function getSessionNextTokenRestoreAt(earliestTokenUsageAt, now) {
+  if (!earliestTokenUsageAt) return null;
+
+  const expiryTime = new Date(earliestTokenUsageAt).getTime() + USER_TOKEN_LIMIT_SESSION_MS;
+  return Number.isFinite(expiryTime) && expiryTime > now.getTime()
+    ? new Date(expiryTime).toISOString()
+    : null;
+}
+
+function getWeeklyResetAt(windowStart) {
+  return new Date(windowStart.getTime() + USER_TOKEN_LIMIT_WEEKLY_MS).toISOString();
+}
+
 /**
  * Return the configured token-budget usage for a dashboard user.
  * Limits of zero intentionally remain unlimited while still reporting use.
@@ -58,6 +75,24 @@ export async function getUserTokenQuota(userId, now = new Date()) {
     )),
   );
 
+  const sessionTokenUsageEntries = await Promise.all(
+    USER_TOKEN_LIMIT_PROVIDER_IDS.map(async (provider) => [
+      provider,
+      await getUserProviderEarliestTokenUsageSince(
+        userId,
+        provider,
+        windows[USER_TOKEN_LIMIT_WINDOWS.SESSION],
+      ),
+    ]),
+  );
+  const sessionNextTokenRestoreAt = Object.fromEntries(
+    sessionTokenUsageEntries.map(([provider, timestamp]) => [
+      provider,
+      getSessionNextTokenRestoreAt(timestamp, now),
+    ]),
+  );
+  const weeklyResetAt = getWeeklyResetAt(windows[USER_TOKEN_LIMIT_WINDOWS.WEEKLY]);
+
   const providers = Object.fromEntries(
     USER_TOKEN_LIMIT_PROVIDER_IDS.map((provider) => [provider, {}]),
   );
@@ -67,6 +102,9 @@ export async function getUserTokenQuota(userId, now = new Date()) {
       used,
       windows[windowType],
     );
+    providers[provider][windowType].resetAt = windowType === USER_TOKEN_LIMIT_WINDOWS.SESSION
+      ? sessionNextTokenRestoreAt[provider]
+      : weeklyResetAt;
   }
 
   return providers;

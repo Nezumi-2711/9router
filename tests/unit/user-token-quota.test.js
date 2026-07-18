@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getUserTokenLimits = vi.fn();
 const getUserProviderTokenUsageSince = vi.fn();
+const getUserProviderEarliestTokenUsageSince = vi.fn();
 const getUserTokenLimitWindowStart = vi.fn();
 
 vi.mock("@/lib/db/index.js", () => ({
   getUserTokenLimits,
   getUserProviderTokenUsageSince,
+  getUserProviderEarliestTokenUsageSince,
 }));
 vi.mock("@/lib/tokenLimitEnforcer.js", () => ({ getUserTokenLimitWindowStart }));
 
@@ -23,6 +25,7 @@ describe("user token quota snapshot", () => {
   beforeEach(() => {
     getUserTokenLimits.mockReset();
     getUserProviderTokenUsageSince.mockReset();
+    getUserProviderEarliestTokenUsageSince.mockReset();
     getUserTokenLimitWindowStart.mockReset();
 
     getUserTokenLimits.mockResolvedValue({
@@ -42,6 +45,7 @@ describe("user token quota snapshot", () => {
       const windowType = since.getTime() === sessionStart.getTime() ? "session" : "weekly";
       return usage.get(usageKey(provider, windowType));
     });
+    getUserProviderEarliestTokenUsageSince.mockResolvedValue(null);
   });
 
   it("calculates both provider windows and preserves zero as unlimited", async () => {
@@ -58,7 +62,21 @@ describe("user token quota snapshot", () => {
       },
     });
     expect(quota.codex.session.windowStart).toBe(sessionStart.toISOString());
+    expect(quota.codex.session.resetAt).toBeNull();
+    expect(quota.codex.weekly.resetAt).toBe("2026-07-20T17:00:00.000Z");
     expect(getUserProviderTokenUsageSince).toHaveBeenCalledTimes(4);
+    expect(getUserProviderEarliestTokenUsageSince).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports when the next tokens leave a rolling session window", async () => {
+    getUserProviderEarliestTokenUsageSince.mockImplementation(async (_userId, provider) => (
+      provider === "orbit-provider" ? "2026-07-17T06:30:00.000Z" : null
+    ));
+
+    const quota = await getUserTokenQuota("user-1", new Date("2026-07-17T10:00:00.000Z"));
+
+    expect(quota["orbit-provider"].session.resetAt).toBe("2026-07-17T11:30:00.000Z");
+    expect(quota.codex.session.resetAt).toBeNull();
   });
 
   it("requires a user id", async () => {

@@ -28,3 +28,4 @@ export const USER_TOKEN_LIMIT_WINDOW_CONFIG = Object.freeze({
 });
 
 export const USER_TOKEN_LIMIT_SESSION_MS = 5 * 60 * 60 * 1000;
+export const USER_TOKEN_LIMIT_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000;

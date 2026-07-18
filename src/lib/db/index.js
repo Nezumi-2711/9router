@@ -63,6 +63,7 @@ export {
 export {
   createEmptyUserTokenLimits, getUserTokenLimits,
   replaceUserTokenLimits, getUserProviderTokenUsageSince,
+  getUserProviderEarliestTokenUsageSince,
 } from "./repos/userTokenLimitsRepo.js";
 
 // Aliases (model + custom + mitm)

@@ -113,3 +113,27 @@ export async function getUserProviderTokenUsageSince(userId, provider, since) {
   );
   return Math.max(0, Number(row?.totalTokens) || 0);
 }
+
+/**
+ * Return the earliest request with billable tokens inside a rolling window.
+ * Its expiry determines when the first part of a rolling quota becomes available again.
+ */
+export async function getUserProviderEarliestTokenUsageSince(userId, provider, since) {
+  if (!userId) return null;
+  assertProvider(provider);
+  if (!(since instanceof Date) || !Number.isFinite(since.getTime())) {
+    throw new Error("A valid usage window start is required");
+  }
+
+  const db = await getAdapter();
+  const row = db.get(
+    `SELECT MIN(timestamp) AS timestamp
+     FROM usageHistory
+     WHERE userId = ?
+       AND provider = ?
+       AND timestamp >= ?
+       AND (COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0)) > 0`,
+    [userId, provider, since.toISOString()],
+  );
+  return row?.timestamp || null;
+}

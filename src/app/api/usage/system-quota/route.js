@@ -84,7 +84,11 @@ function sanitizeQuotaForUser(data, user) {
     }) => ({
       ...provider,
       hasFailedQuotaChecks: failedAccountCount > 0,
-      quotas: provider.quotas.map(({ resetAt: _resetAt, recurring: _recurring, ...quota }) => quota),
+      quotas: provider.quotas.map(({ resetAt, recurring: _recurring, ...quota }) => (
+        provider.quotaSource === "user-token-limit"
+          ? { ...quota, resetAt }
+          : quota
+      )),
     })),
   };
 }
@@ -138,6 +142,7 @@ function buildUserTokenQuotaProviders(tokenQuota, activeConnectionCounts) {
           remainingPercentage: quota?.remainingPercentage ?? null,
           isUnlimited: quota?.isUnlimited === true,
           windowStart: quota?.windowStart || null,
+          resetAt: quota?.resetAt || null,
         };
       }),
     }];

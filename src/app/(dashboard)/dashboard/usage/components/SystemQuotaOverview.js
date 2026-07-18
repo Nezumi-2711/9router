@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { Button, Card, CardSkeleton } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import { REFRESH_INTERVAL_MS } from "./ProviderLimits/utils";
+import { formatResetTime, REFRESH_INTERVAL_MS } from "./ProviderLimits/utils";
 import { formatVietnamTime } from "@/shared/utils/dateTime";
 import { formatTokenCount } from "@/shared/utils/tokenCount.js";
-import { USER_TOKEN_LIMIT_WINDOW_CONFIG } from "open-sse/config/userTokenLimits.js";
+import { USER_TOKEN_LIMIT_WINDOWS } from "open-sse/config/userTokenLimits.js";
 
 function getProviderInfo(providerId) {
   return AI_PROVIDERS[providerId] || {
@@ -34,6 +34,29 @@ function getQuotaTone(percentage) {
     return { bar: "bg-yellow-500", dot: "bg-yellow-500", text: "text-yellow-500" };
   }
   return { bar: "bg-red-500", dot: "bg-red-500", text: "text-red-500" };
+}
+
+function TokenQuotaResetStatus({ quota }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!quota.resetAt) return undefined;
+
+    const intervalId = window.setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [quota.resetAt]);
+
+  const countdown = formatResetTime(quota.resetAt, now);
+  const isSession = quota.windowType === USER_TOKEN_LIMIT_WINDOWS.SESSION;
+  const text = countdown === "-"
+    ? (isSession ? "No tokens pending expiry" : "Reset time unavailable")
+    : (isSession ? `Next tokens restore in ${countdown}` : `Resets in ${countdown}`);
+
+  return (
+    <span className="mt-0.5 block text-xs text-text-muted" aria-live="polite">
+      {text}
+    </span>
+  );
 }
 
 function QuotaListRow({ quota }) {
@@ -68,17 +91,16 @@ function QuotaListRow({ quota }) {
 function TokenQuotaListRow({ quota }) {
   const isUnlimited = quota.isUnlimited === true;
   const tone = isUnlimited ? null : getQuotaTone(quota.remainingPercentage);
-  const windowConfig = USER_TOKEN_LIMIT_WINDOW_CONFIG[quota.windowType];
-  const description = windowConfig?.description || "Personal token budget";
 
   return (
     <li className="py-3 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <span className="block truncate text-sm font-medium text-text-main">{quota.name}</span>
-          <span className="mt-0.5 block text-xs text-text-muted">{description}</span>
+          <TokenQuotaResetStatus key={quota.resetAt || "no-reset"} quota={quota} />
         </div>
-        {isUnlimited ? (
+        <div className="text-right">
+          {isUnlimited ? (
           <span className="shrink-0 rounded-full border border-border-subtle bg-surface px-2 py-1 text-[11px] font-medium text-text-muted">
             Unlimited
           </span>
@@ -88,10 +110,9 @@ function TokenQuotaListRow({ quota }) {
             {quota.remainingPercentage}%
           </span>
         )}
+          <div className="mt-2 gap-3 text-xs tabular-nums text-text-muted">
       </div>
-      <div className="mt-2 flex items-center justify-between gap-3 text-xs tabular-nums text-text-muted">
-        <span>{formatTokenCount(quota.used)} used</span>
-        {isUnlimited ? null : <span>{formatTokenCount(quota.limit)} token limit</span>}
+        </div>
       </div>
       {!isUnlimited && (
         <div
@@ -137,7 +158,6 @@ function ProviderQuotaListItem({ provider }) {
           </div>
           <div className="min-w-0">
             <h2 className="truncate font-semibold text-text-main">{providerName}</h2>
-            {isPersonalTokenBudget ? <p className="text-sm text-text-muted">Personal token budget</p> : null}
           </div>
         </div>
       </header>
