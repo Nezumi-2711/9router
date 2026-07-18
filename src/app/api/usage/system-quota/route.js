@@ -7,6 +7,12 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route";
 import { getUsageForProvider } from "open-sse/services/usage.js";
+import { getUserTokenQuota } from "@/lib/userTokenQuota.js";
+import {
+  USER_TOKEN_LIMIT_PROVIDER_IDS,
+  USER_TOKEN_LIMIT_WINDOW_CONFIG,
+  USER_TOKEN_LIMIT_WINDOW_IDS,
+} from "open-sse/config/userTokenLimits.js";
 import {
   getRemainingPercentage,
   parseQuotaData,
@@ -15,7 +21,12 @@ import {
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL_MS = 60 * 1000;
-let cachedSystemQuota = null;
+const cachedSystemQuotas = new Map();
+const userTokenQuotaProviderSet = new Set(USER_TOKEN_LIMIT_PROVIDER_IDS);
+const CACHE_KEYS = Object.freeze({
+  ALL_PROVIDERS: "all-providers",
+  NON_TOKEN_PROVIDERS: "non-token-providers",
+});
 
 function isUsageEligible(connection) {
   const isApiKey = connection.authType === "apikey" || connection.authType === "api_key";
@@ -60,15 +71,86 @@ function sanitizeProviderError(error) {
   return "Quota data is temporarily unavailable for this provider.";
 }
 
-function hideQuotaResetDetails(data, user) {
+function sanitizeQuotaForUser(data, user) {
   if (user.role === "admin") return data;
 
   return {
     ...data,
-    providers: data.providers.map((provider) => ({
+    providers: data.providers.map(({
+      accountCount: _accountCount,
+      quotaAccountCount: _quotaAccountCount,
+      failedAccountCount,
+      ...provider
+    }) => ({
       ...provider,
+      hasFailedQuotaChecks: failedAccountCount > 0,
       quotas: provider.quotas.map(({ resetAt: _resetAt, recurring: _recurring, ...quota }) => quota),
     })),
+  };
+}
+
+function getCacheKey(user) {
+  return user.role === "admin" ? CACHE_KEYS.ALL_PROVIDERS : CACHE_KEYS.NON_TOKEN_PROVIDERS;
+}
+
+function getUpstreamConnections(connections, user) {
+  const eligibleConnections = connections.filter(isUsageEligible);
+  if (user.role === "admin") return eligibleConnections;
+
+  return eligibleConnections.filter((connection) => (
+    !userTokenQuotaProviderSet.has(connection.provider)
+  ));
+}
+
+function getActiveTokenQuotaConnectionCounts(connections) {
+  const counts = Object.fromEntries(USER_TOKEN_LIMIT_PROVIDER_IDS.map((provider) => [provider, 0]));
+
+  for (const connection of connections) {
+    if (!connection.isActive || !isUsageEligible(connection)) continue;
+    if (!userTokenQuotaProviderSet.has(connection.provider)) continue;
+    counts[connection.provider] += 1;
+  }
+
+  return counts;
+}
+
+function buildUserTokenQuotaProviders(tokenQuota, activeConnectionCounts) {
+  return USER_TOKEN_LIMIT_PROVIDER_IDS.flatMap((provider) => {
+    const accountCount = activeConnectionCounts[provider] || 0;
+    if (accountCount === 0) return [];
+
+    return [{
+      provider,
+      accountCount,
+      quotaAccountCount: 1,
+      failedAccountCount: 0,
+      errorMessage: null,
+      quotaSource: "user-token-limit",
+      quotas: USER_TOKEN_LIMIT_WINDOW_IDS.map((windowType) => {
+        const quota = tokenQuota[provider]?.[windowType];
+        return {
+          name: USER_TOKEN_LIMIT_WINDOW_CONFIG[windowType].name,
+          windowType,
+          tokenBudget: true,
+          limit: quota?.limit || 0,
+          used: quota?.used || 0,
+          remaining: quota?.remaining ?? null,
+          remainingPercentage: quota?.remainingPercentage ?? null,
+          isUnlimited: quota?.isUnlimited === true,
+          windowStart: quota?.windowStart || null,
+        };
+      }),
+    }];
+  });
+}
+
+function overlayUserTokenQuota(data, tokenQuota, activeConnectionCounts) {
+  const personalProviders = buildUserTokenQuotaProviders(tokenQuota, activeConnectionCounts);
+
+  return {
+    ...data,
+    providers: [...data.providers, ...personalProviders]
+      .sort((a, b) => a.provider.localeCompare(b.provider)),
   };
 }
 
@@ -186,15 +268,29 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get("refresh") === "true";
+    const cacheKey = getCacheKey(user);
+    const cachedSystemQuota = cachedSystemQuotas.get(cacheKey);
     const cacheIsFresh = cachedSystemQuota && Date.now() - cachedSystemQuota.cachedAt < CACHE_TTL_MS;
 
     if (!forceRefresh && cacheIsFresh) {
-      return Response.json({ ...hideQuotaResetDetails(cachedSystemQuota.data, user), cached: true });
+      if (user.role === "admin") {
+        return Response.json({ ...sanitizeQuotaForUser(cachedSystemQuota.data, user), cached: true });
+      }
+
+      const connections = await getProviderConnections({});
+      const tokenQuota = await getUserTokenQuota(user.id);
+      const data = overlayUserTokenQuota(
+        cachedSystemQuota.data,
+        tokenQuota,
+        getActiveTokenQuotaConnectionCounts(connections),
+      );
+      return Response.json({ ...sanitizeQuotaForUser(data, user), cached: true });
     }
 
-    const connections = (await getProviderConnections({})).filter(isUsageEligible);
+    const connections = await getProviderConnections({});
+    const upstreamConnections = getUpstreamConnections(connections, user);
     const results = await Promise.allSettled(
-      connections.map(async (connection) => ({
+      upstreamConnections.map(async (connection) => ({
         provider: connection.provider,
         quotas: await fetchConnectionQuota(connection),
       })),
@@ -209,19 +305,27 @@ export async function GET(request) {
         };
       }
 
-      console.warn(`[System quota] ${connections[index].provider}: ${result.reason?.message || "quota fetch failed"}`);
+      console.warn(`[System quota] ${upstreamConnections[index].provider}: ${result.reason?.message || "quota fetch failed"}`);
       return {
         status: result.status,
-        provider: connections[index].provider,
+        provider: upstreamConnections[index].provider,
         value: [],
         errorMessage: sanitizeProviderError(result.reason),
       };
     });
 
-    const data = buildSystemQuotaResponse(connections, normalizedResults);
-    cachedSystemQuota = { data, cachedAt: Date.now() };
+    const upstreamData = buildSystemQuotaResponse(upstreamConnections, normalizedResults);
+    cachedSystemQuotas.set(cacheKey, { data: upstreamData, cachedAt: Date.now() });
 
-    return Response.json({ ...hideQuotaResetDetails(data, user), cached: false });
+    const data = user.role === "admin"
+      ? upstreamData
+      : overlayUserTokenQuota(
+        upstreamData,
+        await getUserTokenQuota(user.id),
+        getActiveTokenQuotaConnectionCounts(connections),
+      );
+
+    return Response.json({ ...sanitizeQuotaForUser(data, user), cached: false });
   } catch (error) {
     if (error?.message === "Unauthorized") {
       return Response.json({ error: "Unauthorized" }, { status: 401 });

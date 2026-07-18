@@ -16,4 +16,15 @@ export const USER_TOKEN_LIMIT_WINDOW_IDS = Object.freeze(
   Object.values(USER_TOKEN_LIMIT_WINDOWS),
 );
 
+export const USER_TOKEN_LIMIT_WINDOW_CONFIG = Object.freeze({
+  [USER_TOKEN_LIMIT_WINDOWS.SESSION]: Object.freeze({
+    name: "Session",
+    description: "Rolling 5 hours",
+  }),
+  [USER_TOKEN_LIMIT_WINDOWS.WEEKLY]: Object.freeze({
+    name: "Weekly",
+    description: "Resets Monday, Vietnam time",
+  }),
+});
+
 export const USER_TOKEN_LIMIT_SESSION_MS = 5 * 60 * 60 * 1000;

@@ -6,6 +6,8 @@ import { Button, Card, CardSkeleton } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { REFRESH_INTERVAL_MS } from "./ProviderLimits/utils";
 import { formatVietnamTime } from "@/shared/utils/dateTime";
+import { formatTokenCount } from "@/shared/utils/tokenCount.js";
+import { USER_TOKEN_LIMIT_WINDOW_CONFIG } from "open-sse/config/userTokenLimits.js";
 
 function getProviderInfo(providerId) {
   return AI_PROVIDERS[providerId] || {
@@ -63,10 +65,58 @@ function QuotaListRow({ quota }) {
   );
 }
 
+function TokenQuotaListRow({ quota }) {
+  const isUnlimited = quota.isUnlimited === true;
+  const tone = isUnlimited ? null : getQuotaTone(quota.remainingPercentage);
+  const windowConfig = USER_TOKEN_LIMIT_WINDOW_CONFIG[quota.windowType];
+  const description = windowConfig?.description || "Personal token budget";
+
+  return (
+    <li className="py-3 first:pt-0 last:pb-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="block truncate text-sm font-medium text-text-main">{quota.name}</span>
+          <span className="mt-0.5 block text-xs text-text-muted">{description}</span>
+        </div>
+        {isUnlimited ? (
+          <span className="shrink-0 rounded-full border border-border-subtle bg-surface px-2 py-1 text-[11px] font-medium text-text-muted">
+            Unlimited
+          </span>
+        ) : (
+          <span className={`inline-flex shrink-0 items-center gap-2 text-sm font-semibold tabular-nums ${tone.text}`}>
+            <span className={`h-2 w-2 rounded-full ${tone.dot}`} aria-hidden="true" />
+            {quota.remainingPercentage}%
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 text-xs tabular-nums text-text-muted">
+        <span>{formatTokenCount(quota.used)} used</span>
+        {isUnlimited ? null : <span>{formatTokenCount(quota.limit)} token limit</span>}
+      </div>
+      {!isUnlimited && (
+        <div
+          className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2"
+          role="progressbar"
+          aria-label={`${quota.name} personal token quota remaining`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={quota.remainingPercentage}
+        >
+          <div
+            className={`h-full rounded-full transition-[width] duration-300 ${tone.bar}`}
+            style={{ width: `${Math.min(Math.max(quota.remainingPercentage, 0), 100)}%` }}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
 function ProviderQuotaListItem({ provider }) {
   const providerInfo = getProviderInfo(provider.provider);
   const providerName = providerInfo.name || provider.provider;
   const hasQuotaData = provider.quotas.length > 0;
+  const isPersonalTokenBudget = provider.quotaSource === "user-token-limit";
 
   return (
     <article className="flex flex-col gap-5 px-4 py-5 sm:flex-row sm:gap-8 sm:px-6 sm:py-6">
@@ -87,16 +137,18 @@ function ProviderQuotaListItem({ provider }) {
           </div>
           <div className="min-w-0">
             <h2 className="truncate font-semibold text-text-main">{providerName}</h2>
-            <p className="text-sm text-text-muted">
-              {provider.accountCount} {provider.accountCount === 1 ? "account" : "accounts"} connected
-            </p>
+            {isPersonalTokenBudget ? <p className="text-sm text-text-muted">Personal token budget</p> : null}
           </div>
         </div>
       </header>
 
       {hasQuotaData ? (
         <ul className="min-w-0 flex-1 divide-y divide-border-subtle">
-          {provider.quotas.map((quota) => <QuotaListRow key={quota.name} quota={quota} />)}
+          {provider.quotas.map((quota) => (
+            quota.tokenBudget
+              ? <TokenQuotaListRow key={quota.name} quota={quota} />
+              : <QuotaListRow key={quota.name} quota={quota} />
+          ))}
         </ul>
       ) : (
         <div className="flex-1 rounded-lg border border-dashed border-border-subtle bg-bg px-4 py-4 text-sm text-text-muted">
@@ -106,9 +158,9 @@ function ProviderQuotaListItem({ provider }) {
         </div>
       )}
 
-      {provider.failedAccountCount > 0 && hasQuotaData && (
+      {provider.hasFailedQuotaChecks && hasQuotaData && (
         <p className="self-end text-xs text-text-muted sm:max-w-44">
-          Some account quota checks could not be completed.
+          Some quota checks could not be completed.
         </p>
       )}
     </article>

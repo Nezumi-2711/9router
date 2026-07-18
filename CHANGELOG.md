@@ -27,6 +27,7 @@
 
 ## Improvements
 - **Perf**: skip inactive background services on startup
+- **User quota**: Quota Tracker reports personal Codex and Orbit Provider token budgets with session and weekly usage
 
 ## Docs
 - README: Persian YouTube tutorial

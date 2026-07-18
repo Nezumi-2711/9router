@@ -1,13 +1,9 @@
 import {
   USER_TOKEN_LIMIT_PROVIDERS,
+  USER_TOKEN_LIMIT_WINDOW_CONFIG,
   USER_TOKEN_LIMIT_WINDOWS,
 } from "open-sse/config/userTokenLimits.js";
-
-const TOKEN_FORMATTER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const COMPACT_TOKEN_FORMATTER = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
+import { formatTokenCount } from "@/shared/utils/tokenCount.js";
 
 export const TOKEN_LIMIT_PROVIDER_OPTIONS = Object.freeze([
   {
@@ -29,13 +25,11 @@ export const TOKEN_LIMIT_PROVIDER_OPTIONS = Object.freeze([
 export const TOKEN_LIMIT_WINDOW_OPTIONS = Object.freeze([
   {
     id: USER_TOKEN_LIMIT_WINDOWS.SESSION,
-    name: "Session",
-    description: "Rolling 5 hours",
+    ...USER_TOKEN_LIMIT_WINDOW_CONFIG[USER_TOKEN_LIMIT_WINDOWS.SESSION],
   },
   {
     id: USER_TOKEN_LIMIT_WINDOWS.WEEKLY,
-    name: "Weekly",
-    description: "Resets Monday, Vietnam time",
+    ...USER_TOKEN_LIMIT_WINDOW_CONFIG[USER_TOKEN_LIMIT_WINDOWS.WEEKLY],
   },
 ]);
 
@@ -70,7 +64,4 @@ export function getProviderRemainingPercentage(providerUsage) {
   return Math.min(...activeWindows.map((windowUsage) => windowUsage.remainingPercentage));
 }
 
-export function formatTokenCount(value, compact = false) {
-  const amount = Math.max(0, Number(value) || 0);
-  return (compact ? COMPACT_TOKEN_FORMATTER : TOKEN_FORMATTER).format(amount);
-}
+export { formatTokenCount };
