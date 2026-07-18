@@ -15,10 +15,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cloudEnabled, setCloudEnabled] = useState(false);
-  const [tunnelEnabled, setTunnelEnabled] = useState(false);
-  const [tunnelPublicUrl, setTunnelPublicUrl] = useState("");
-  const [tailscaleEnabled, setTailscaleEnabled] = useState(false);
-  const [tailscaleUrl, setTailscaleUrl] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
   const [availableModels, setAvailableModels] = useState([]);
   const [initialConfig, setInitialConfig] = useState(null);
@@ -27,10 +23,9 @@ export default function ToolDetailClient({ toolId, machineId }) {
     let mounted = true;
     (async () => {
       try {
-        const [provRes, settingsRes, tunnelRes, keysRes, modelsRes, configRes] = await Promise.all([
+        const [provRes, settingsRes, keysRes, modelsRes, configRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/settings"),
-          fetch("/api/tunnel/status"),
           fetch("/api/keys"),
           fetch("/api/models/connected", { cache: "no-store" }),
           fetch(`/api/cli-tools/config/${encodeURIComponent(toolId)}`, { cache: "no-store" }),
@@ -43,13 +38,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
         if (settingsRes.ok) {
           const data = await settingsRes.json();
           setCloudEnabled(data.cloudEnabled || false);
-        }
-        if (tunnelRes.ok) {
-          const data = await tunnelRes.json();
-          setTunnelEnabled(!!(data.tunnel?.enabled || data.tunnel?.settingsEnabled));
-          setTunnelPublicUrl(data.tunnel?.publicUrl || "");
-          setTailscaleEnabled(!!(data.tailscale?.enabled || data.tailscale?.settingsEnabled));
-          setTailscaleUrl(data.tailscale?.tunnelUrl || "");
         }
         if (keysRes.ok) {
           const data = await keysRes.json();
@@ -91,10 +79,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
       appUrl: typeof window !== "undefined" ? window.location.origin : "",
       configuredBaseUrl: CONFIGURED_BASE_URL,
       requiresExternalUrl: tool?.requiresExternalUrl === true,
-      tunnelEnabled,
-      tunnelPublicUrl,
-      tailscaleEnabled,
-      tailscaleUrl,
       cloudEnabled,
       cloudUrl: CLOUD_URL,
     });
@@ -106,10 +90,6 @@ export default function ToolDetailClient({ toolId, machineId }) {
       toolId,
       baseUrl: getBaseUrl(),
       apiKeys,
-      tunnelEnabled,
-      tunnelPublicUrl,
-      tailscaleEnabled,
-      tailscaleUrl,
       activeProviders: getActiveProviders(),
       availableModels,
       cloudEnabled,

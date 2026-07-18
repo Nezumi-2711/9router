@@ -1,0 +1,381 @@
+.console {
+  --console-canvas: #f7f8fa;
+  --console-panel: #f1f3f6;
+  --console-panel-strong: #ffffff;
+  --console-ink: #171d27;
+  --console-muted: #657084;
+  --console-rule: #dce2e9;
+  --console-signal: #ed6548;
+  --console-signal-soft: rgba(237, 101, 72, 0.12);
+  --console-shadow: 0 18px 44px -30px rgba(32, 44, 62, 0.3);
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  gap: 1.5rem;
+  color: var(--console-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.console::before {
+  position: absolute;
+  z-index: -1;
+  inset: -2rem -1.5rem auto;
+  height: 20rem;
+  content: "";
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 74% 4%, rgba(237, 101, 72, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 82%);
+  mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+:global(.dark) .console {
+  --console-canvas: #0f1115;
+  --console-panel: #151a21;
+  --console-panel-strong: #1a2029;
+  --console-ink: #f1f5f9;
+  --console-muted: #a5b0bf;
+  --console-rule: #2d3744;
+  --console-signal: #f17052;
+  --console-signal-soft: rgba(241, 112, 82, 0.15);
+  --console-shadow: 0 22px 52px -32px rgba(0, 0, 0, 0.72);
+}
+
+:global(.dark) .console::before {
+  background:
+    radial-gradient(circle at 74% 4%, rgba(241, 112, 82, 0.07), transparent 28%),
+    linear-gradient(180deg, rgba(33, 40, 51, 0.42), transparent 82%);
+}
+
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem);
+  align-items: end;
+  gap: 2rem;
+  padding: 0.75rem 0 0.25rem;
+}
+
+.sectionKicker {
+  margin: 0;
+  color: var(--console-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.title {
+  max-width: 17ch;
+  margin: 0.45rem 0 0;
+  color: var(--console-ink);
+  font-size: clamp(1.8rem, 3.4vw, 2.75rem);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.description {
+  max-width: 58ch;
+  margin: 0.85rem 0 0;
+  color: var(--console-muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.posture {
+  display: grid;
+  gap: 0.35rem;
+  align-self: stretch;
+  padding: 1rem 1.1rem 1.05rem;
+  border: 1px solid var(--console-rule);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--console-panel-strong) 92%, transparent);
+  box-shadow: var(--console-shadow);
+}
+
+.postureHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--console-ink);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.postureIndicator {
+  display: inline-grid;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 0.125rem;
+  background: var(--console-signal);
+  box-shadow: 0 0 0 0.2rem var(--console-signal-soft);
+}
+
+.postureCopy {
+  margin: 0;
+  color: var(--console-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.accessPanel,
+.keysPanel {
+  border: 1px solid var(--console-rule) !important;
+  border-radius: 1rem !important;
+  background: color-mix(in srgb, var(--console-panel-strong) 94%, transparent) !important;
+  box-shadow: var(--console-shadow) !important;
+}
+
+.accessPanel {
+  position: relative;
+  overflow: visible !important;
+}
+
+.accessPanel::before {
+  position: absolute;
+  top: 5.5rem;
+  bottom: 1.5rem;
+  left: 2.7rem;
+  width: 1px;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--console-signal), var(--console-rule) 28%, var(--console-rule));
+  opacity: 0.62;
+}
+
+.panelHeader {
+  position: relative;
+  z-index: 1;
+  margin: -1.5rem -1.5rem 1.25rem;
+  padding: 1.25rem 1.5rem 1.1rem;
+  border-bottom: 1px solid var(--console-rule);
+  border-radius: 1rem 1rem 0 0;
+  background: linear-gradient(112deg, color-mix(in srgb, var(--console-panel) 96%, transparent), color-mix(in srgb, var(--console-panel-strong) 80%, transparent));
+}
+
+.panelHeader::after {
+  position: absolute;
+  right: 1.5rem;
+  bottom: -1px;
+  left: 1.5rem;
+  height: 1px;
+  content: "";
+  background: linear-gradient(to right, var(--console-signal), transparent 45%);
+}
+
+.panelIcon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--console-signal) 35%, var(--console-rule));
+  border-radius: 0.625rem;
+  background: var(--console-signal-soft);
+  color: var(--console-signal);
+}
+
+.routeLocal,
+.routeRemote {
+  position: relative;
+  z-index: 1;
+  border-color: var(--console-rule) !important;
+  border-radius: 0.75rem !important;
+  background: color-mix(in srgb, var(--console-panel) 82%, transparent) !important;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.routeRemote {
+  border: 1px solid var(--console-rule);
+  padding: 0.625rem;
+}
+
+.routeLocal:hover,
+.routeRemote:hover {
+  border-color: color-mix(in srgb, var(--console-signal) 44%, var(--console-rule)) !important;
+  background: color-mix(in srgb, var(--console-panel-strong) 92%, transparent) !important;
+  transform: translateX(0.15rem);
+}
+
+.routeLocal::before,
+.routeRemote::before {
+  position: absolute;
+  top: 50%;
+  left: -1.05rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  content: "";
+  border: 2px solid var(--console-panel-strong);
+  border-radius: 0.125rem;
+  background: var(--console-signal);
+  transform: translateY(-50%);
+}
+
+.routeRemote::before {
+  background: var(--console-muted);
+}
+
+.routeRemote[data-route-state="connected"]::before {
+  background: var(--color-success);
+}
+
+.routeRemote[data-route-state="checking"]::before {
+  background: var(--color-warning);
+}
+
+.routeRemote[data-route-state="error"]::before {
+  background: var(--color-danger);
+}
+
+.routeInput :global(input) {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--console-ink) !important;
+}
+
+.keysPanel {
+  position: relative;
+}
+
+.keyRegistry {
+  overflow: hidden;
+  border: 1px solid var(--console-rule) !important;
+  border-radius: 0.75rem !important;
+  background: color-mix(in srgb, var(--console-panel) 68%, transparent) !important;
+}
+
+.keyRegistry > div {
+  border-color: var(--console-rule) !important;
+}
+
+.keyRegistry > div:hover {
+  background: var(--console-panel) !important;
+}
+
+.securityPolicy {
+  border: 1px solid var(--console-rule) !important;
+  border-radius: 0.75rem !important;
+  background: color-mix(in srgb, var(--console-panel) 74%, transparent) !important;
+}
+
+.signalButton {
+  box-shadow: 0 10px 18px -14px color-mix(in srgb, var(--console-signal) 88%, transparent);
+}
+
+.actionIcon {
+  color: var(--console-muted) !important;
+}
+
+.actionIcon:hover {
+  color: var(--console-signal) !important;
+}
+
+.actionIcon:focus-visible,
+.routeButton:focus-visible,
+.console :global(button):focus-visible,
+.console :global(a):focus-visible {
+  outline: 2px solid var(--console-signal);
+  outline-offset: 2px;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 17rem;
+  place-items: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.emptyGlyph {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--console-signal) 32%, var(--console-rule));
+  border-radius: 0.875rem;
+  background: var(--console-signal-soft);
+  color: var(--console-signal);
+}
+
+.skeleton {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.skeletonIntro,
+.skeletonPanel {
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 1rem;
+  background: var(--color-surface);
+}
+
+.skeletonIntro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 2rem;
+  padding: 1.5rem;
+}
+
+.skeletonPanel {
+  min-height: 18rem;
+  padding: 1.5rem;
+}
+
+.skeletonLine {
+  border-radius: 0.375rem;
+  background: var(--color-surface-2);
+}
+
+@media (max-width: 767px) {
+  .console {
+    gap: 1.15rem;
+  }
+
+  .console::before {
+    inset: -1.25rem -1rem auto;
+  }
+
+  .intro,
+  .skeletonIntro {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .title {
+    max-width: 21ch;
+  }
+
+  .posture {
+    min-height: auto;
+  }
+
+  .accessPanel::before {
+    display: none;
+  }
+
+  .routeLocal::before,
+  .routeRemote::before {
+    display: none;
+  }
+
+  .panelHeader {
+    margin: -1.5rem -1.5rem 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeLocal,
+  .routeRemote {
+    transition: none;
+  }
+
+  .routeLocal:hover,
+  .routeRemote:hover {
+    transform: none;
+  }
+}

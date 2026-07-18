@@ -234,7 +234,7 @@ describe("dashboard guard local-only access", () => {
     expect(response.body.error).toBe("Unauthorized");
   });
 
-  it("rejects local-only route from a tunnel host", async () => {
+  it("rejects local-only route from a remote host", async () => {
     const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
       host: "router.example.com",
     }));

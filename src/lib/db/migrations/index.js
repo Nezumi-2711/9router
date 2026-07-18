@@ -9,8 +9,9 @@ import m005 from "./005-usage-user-attribution.js";
 import m006 from "./006-combo-owners.js";
 import m007 from "./007-admin-provider-connections.js";
 import m008 from "./008-user-token-limits.js";
+import m009 from "./009-remove-tunnel-settings.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008].sort((a, b) => a.version - b.version);
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009].sort((a, b) => a.version - b.version);
 
 export function latestVersion() {
   return MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1].version : 0;

@@ -15,7 +15,7 @@ const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt"];
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 const navItems = [
-  { href: "/dashboard/endpoint", label: "Endpoint & Key", icon: "api" },
+  { href: "/dashboard", label: "Endpoint & Key", icon: "api" },
   { href: "/dashboard/providers", label: "Providers", icon: "dns", adminOnly: true },
   { href: "/dashboard/models", label: "Models", icon: "view_list" },
   // { href: "/dashboard/basic-chat", label: "Basic Chat", icon: "chat" }, // Hidden
@@ -56,8 +56,8 @@ export default function Sidebar({ onClose }) {
   }, [fetchCurrentUser, user]);
 
   const isActive = (href) => {
-    if (href === "/dashboard/endpoint") {
-      return pathname === "/dashboard" || pathname.startsWith("/dashboard/endpoint");
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
     }
     return pathname.startsWith(href);
   };
@@ -65,18 +65,18 @@ export default function Sidebar({ onClose }) {
 
   return (
     <>
-      <aside className="flex w-72 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
+      <aside className="flex w-64 flex-col border-r border-border-subtle bg-vibrancy backdrop-blur-xl transition-colors duration-300 min-h-full">
         {/* Traffic lights */}
-        <div className="flex items-center gap-2 px-6 pt-5 pb-2">
-          <div className="w-3 h-3 rounded-full bg-[#FF5F56]" />
-          <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
-          <div className="w-3 h-3 rounded-full bg-[#27C93F]" />
+        <div className="flex items-center gap-1.5 px-5 pt-4 pb-2">
+          <div className="size-2.5 rounded-full bg-[#ff6259]" />
+          <div className="size-2.5 rounded-full bg-[#ffc145]" />
+          <div className="size-2.5 rounded-full bg-[#2ecb71]" />
         </div>
 
         {/* Logo */}
-        <div className="px-6 py-4 flex flex-col gap-2">
+        <div className="px-5 py-3.5 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]">
+            <div className="flex size-9 items-center justify-center rounded-[10px] bg-linear-to-br from-brand-400 to-brand-700 shadow-warm ring-1 ring-brand-300/30">
               <span className="material-symbols-outlined text-white text-[20px]">hub</span>
             </div>
             <div className="flex flex-col">
@@ -88,16 +88,16 @@ export default function Sidebar({ onClose }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {navItems.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => (
             <Link
               key={item.href}
               href={item.href}
               onClick={onClose}
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                "flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 group",
                 isActive(item.href)
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >
@@ -125,9 +125,9 @@ export default function Sidebar({ onClose }) {
                 <button
                   onClick={() => setMediaOpen((v) => !v)}
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                    "w-full flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 group",
                     pathname.startsWith("/dashboard/media-providers")
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
@@ -145,9 +145,9 @@ export default function Sidebar({ onClose }) {
                         href={`/dashboard/media-providers/${kind.id}`}
                         onClick={onClose}
                         className={cn(
-                          "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                          "flex items-center gap-3 px-4 py-1.5 rounded-lg transition-all duration-200 group",
                           pathname.startsWith(`/dashboard/media-providers/${kind.id}`)
-                            ? "bg-primary/10 text-primary"
+                            ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                             : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                         )}
                       >
@@ -160,9 +160,9 @@ export default function Sidebar({ onClose }) {
                       href={COMBINED_WEB_ITEM.href}
                       onClick={onClose}
                       className={cn(
-                        "flex items-center gap-3 px-4 py-1 rounded-lg transition-all group",
+                        "flex items-center gap-3 px-4 py-1.5 rounded-lg transition-all duration-200 group",
                         pathname.startsWith(COMBINED_WEB_ITEM.href)
-                          ? "bg-primary/10 text-primary"
+                          ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                           : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                       )}
                     >
@@ -180,9 +180,9 @@ export default function Sidebar({ onClose }) {
                 href={item.href}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  "flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 group",
                   isActive(item.href)
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                     : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                 )}
               >
@@ -203,9 +203,9 @@ export default function Sidebar({ onClose }) {
                 href="/dashboard/users"
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                  "flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 group",
                   isActive("/dashboard/users")
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                     : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                 )}
               >
@@ -224,9 +224,9 @@ export default function Sidebar({ onClose }) {
                   href={item.href}
                   onClick={onClose}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                    "flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 group",
                     isActive(item.href)
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                       : "text-text-muted hover:bg-surface-2 hover:text-text-main"
                   )}
                 >
@@ -248,9 +248,9 @@ export default function Sidebar({ onClose }) {
               href="/dashboard/profile"
               onClick={onClose}
               className={cn(
-                "flex items-center gap-3 px-3 py-1 rounded-lg transition-all group",
+                "flex items-center gap-3 px-3 py-1.5 rounded-lg transition-all duration-200 group",
                 isActive("/dashboard/profile")
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-primary/12 text-primary ring-1 ring-primary/15"
                   : "text-text-muted hover:bg-surface-2 hover:text-text-main"
               )}
             >

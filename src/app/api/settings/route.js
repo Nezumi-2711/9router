@@ -98,7 +98,6 @@ export async function PATCH(request) {
 
     if (
       Object.prototype.hasOwnProperty.call(body, "requireApiKey") ||
-      Object.prototype.hasOwnProperty.call(body, "tunnelDashboardAccess") ||
       TOKEN_SAVER_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))
     ) {
       let user;

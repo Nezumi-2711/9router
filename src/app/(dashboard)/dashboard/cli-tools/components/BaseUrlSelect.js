@@ -24,7 +24,7 @@ const writeSavedPresets = (presets) => {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
 };
 
-const buildOptions = ({ appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {
+const buildOptions = ({ appUrl, requiresExternalUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {
   const opts = [];
   const wrap = (url) => (withV1 ? ensureCliToolV1Endpoint(url) : (url || "").replace(/\/+$/, ""));
   const runtimeUrl = wrap(appUrl);
@@ -33,14 +33,6 @@ const buildOptions = ({ appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublic
   } else if (!requiresExternalUrl) {
     const fallbackLocalUrl = wrap(`http://127.0.0.1:${APP_CONFIG.defaultPort}`);
     opts.push({ value: "local", label: fallbackLocalUrl, url: fallbackLocalUrl });
-  }
-  if (tunnelEnabled && tunnelPublicUrl) {
-    const u = wrap(tunnelPublicUrl);
-    opts.push({ value: "tunnel", label: u, url: u });
-  }
-  if (tailscaleEnabled && tailscaleUrl) {
-    const u = wrap(tailscaleUrl);
-    opts.push({ value: "tailscale", label: u, url: u });
   }
   if (cloudEnabled && cloudUrl) {
     const u = wrap(cloudUrl);
@@ -58,10 +50,6 @@ export default function BaseUrlSelect({
   onChange,
   appUrl = "",
   requiresExternalUrl = false,
-  tunnelEnabled = false,
-  tunnelPublicUrl = "",
-  tailscaleEnabled = false,
-  tailscaleUrl = "",
   cloudEnabled = false,
   cloudUrl = "",
   withV1 = true,
@@ -74,8 +62,8 @@ export default function BaseUrlSelect({
   }, []);
 
   const options = useMemo(
-    () => buildOptions({ appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }),
-    [appUrl, requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1]
+    () => buildOptions({ appUrl, requiresExternalUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }),
+    [appUrl, requiresExternalUrl, cloudEnabled, cloudUrl, savedPresets, withV1]
   );
 
   const effectiveMode = useMemo(() => {

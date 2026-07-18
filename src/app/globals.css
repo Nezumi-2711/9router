@@ -8,43 +8,42 @@
 .fonts-loaded .material-symbols-outlined { visibility: visible; }
 
 /* ============================================================
-   9Router palette — adopted from 9remote_private/web
-   Brand orange (dark) / soft coral (light), neutral warm bases
-   ============================================================ */
+  9Router palette — cool slate control plane with coral accent
+  ============================================================ */
 :root {
-  /* Brand scale (light) - centered on #E56A4A */
-  --color-brand-50: #fdf1ed;
-  --color-brand-100: #fadccf;
-  --color-brand-200: #f4b59c;
-  --color-brand-300: #ee8d6a;
-  --color-brand-400: #ea7855;
-  --color-brand-500: #E56A4A;
-  --color-brand-600: #cc5236;
-  --color-brand-700: #a64027;
-  --color-brand-800: #7a2f1d;
-  --color-brand-900: #4d1e12;
+  /* Brand scale (light) — coral is reserved for primary actions and emphasis. */
+  --color-brand-50: #fff1ed;
+  --color-brand-100: #ffdfd5;
+  --color-brand-200: #ffc0ad;
+  --color-brand-300: #ff9a7d;
+  --color-brand-400: #fb7759;
+  --color-brand-500: #ed6548;
+  --color-brand-600: #d84c31;
+  --color-brand-700: #b33c27;
+  --color-brand-800: #8f3324;
+  --color-brand-900: #762f24;
 
   /* Primary (legacy alias for backward compat with existing components) */
   --color-primary: var(--color-brand-500);
   --color-primary-hover: var(--color-brand-600);
 
-  /* Surfaces & backgrounds (light) */
-  --color-bg: #FDFAF6;
-  --color-bg-alt: #F7F3EE;
+  /* Surfaces & backgrounds (light) — a cool neutral family. */
+  --color-bg: #f7f8fa;
+  --color-bg-alt: #eef1f5;
   --color-surface: #ffffff;
-  --color-surface-2: #f4f4f5;
-  --color-surface-3: #e7e7e9;
-  --color-sidebar: rgba(244, 241, 236, 0.85);
+  --color-surface-2: #f1f3f6;
+  --color-surface-3: #e4e8ed;
+  --color-sidebar: rgba(247, 248, 250, 0.86);
 
   /* Borders */
-  --color-border: #e5e7eb;
-  --color-border-subtle: #f1f1f3;
+  --color-border: #dce2e9;
+  --color-border-subtle: #e9edf2;
 
   /* Text */
-  --color-text: #0a0a0a;
-  --color-text-main: #0a0a0a;
-  --color-text-muted: #6B7280;
-  --color-text-subtle: #9CA3AF;
+  --color-text: #171d27;
+  --color-text-main: #171d27;
+  --color-text-muted: #657084;
+  --color-text-subtle: #98a2b3;
 
   /* Status */
   --color-danger: #cf222e;
@@ -57,63 +56,63 @@
   --radius-brand-lg: 14px;
 
   /* Shadows */
-  --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.04);
-  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.18);
-  --shadow-elevated: 0 12px 28px -4px rgba(60, 50, 45, 0.06);
+  --shadow-soft: 0 1px 2px 0 rgba(32, 44, 62, 0.05);
+  --shadow-warm: 0 8px 18px -12px rgba(216, 76, 49, 0.42);
+  --shadow-elevated: 0 14px 34px -14px rgba(32, 44, 62, 0.16);
   --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.8),
-    0 1px 2px rgba(15,23,42,0.04),
-    0 12px 36px -8px rgba(15,23,42,0.10);
-  --shadow-focus: 0 0 0 3px rgba(229,106,74,0.18);
+    inset 0 1px 0 0 rgba(255,255,255,0.88),
+    0 1px 2px rgba(32, 44, 62, 0.05),
+    0 14px 36px -14px rgba(32, 44, 62, 0.16);
+  --shadow-focus: 0 0 0 3px rgba(237, 101, 72, 0.2);
 
   color-scheme: light;
 }
 
 .dark {
-  /* Brand scale (dark) - centered on #E56A4A, same as light for consistency */
-  --color-brand-50: #fdf1ed;
-  --color-brand-100: #fadccf;
-  --color-brand-200: #f4b59c;
-  --color-brand-300: #ee8d6a;
-  --color-brand-400: #ea7855;
-  --color-brand-500: #E56A4A;
-  --color-brand-600: #cc5236;
-  --color-brand-700: #a64027;
-  --color-brand-800: #7a2f1d;
-  --color-brand-900: #4d1e12;
+  /* Same brand hue, calibrated for a dark developer control plane. */
+  --color-brand-50: #fff1ed;
+  --color-brand-100: #ffdfd5;
+  --color-brand-200: #ffc0ad;
+  --color-brand-300: #ffad96;
+  --color-brand-400: #fb8569;
+  --color-brand-500: #f17052;
+  --color-brand-600: #dc563a;
+  --color-brand-700: #b94530;
+  --color-brand-800: #913829;
+  --color-brand-900: #773025;
 
-  --color-primary: #E56A4A;
-  --color-primary-hover: #cc5236;
+  --color-primary: var(--color-brand-500);
+  --color-primary-hover: var(--color-brand-400);
 
-  /* Surfaces (dark - Claude-like neutral warm) */
-  --color-bg: #1a1a1a;
-  --color-bg-alt: #1F1F1E;
-  --color-surface: #262626;
-  --color-surface-2: #303030;
-  --color-surface-3: #3a3a3a;
-  --color-sidebar: rgba(30, 30, 30, 0.85);
+  /* Surfaces (dark) — all greys share a restrained blue-slate undertone. */
+  --color-bg: #0f1115;
+  --color-bg-alt: #141820;
+  --color-surface: #191e26;
+  --color-surface-2: #212833;
+  --color-surface-3: #2a3340;
+  --color-sidebar: rgba(15, 17, 21, 0.88);
 
-  --color-border: #333333;
-  --color-border-subtle: #2a2a2a;
+  --color-border: #2d3744;
+  --color-border-subtle: #222b36;
 
-  --color-text: #ededed;
-  --color-text-main: #ededed;
-  --color-text-muted: #9ca3af;
-  --color-text-subtle: #6b7280;
+  --color-text: #f1f5f9;
+  --color-text-main: #f1f5f9;
+  --color-text-muted: #a5b0bf;
+  --color-text-subtle: #708096;
 
   --color-danger: #ef4444;
   --color-success: #22c55e;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  --shadow-soft: 0 1px 2px 0 rgba(0,0,0,0.3);
-  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.25);
-  --shadow-elevated: 0 12px 28px -4px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.28);
+  --shadow-warm: 0 10px 22px -15px rgba(241, 112, 82, 0.5);
+  --shadow-elevated: 0 18px 38px -18px rgba(0, 0, 0, 0.62);
   --shadow-elev:
-    inset 0 1px 0 0 rgba(255,255,255,0.06),
-    0 1px 2px rgba(0,0,0,0.4),
-    0 16px 48px -8px rgba(0,0,0,0.55);
-  --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.18);
+    inset 0 1px 0 0 rgba(255,255,255,0.05),
+    0 1px 2px rgba(0,0,0,0.42),
+    0 18px 44px -18px rgba(0,0,0,0.64);
+  --shadow-focus: 0 0 0 3px rgba(241, 112, 82, 0.22);
 
   color-scheme: dark;
 }
@@ -171,18 +170,18 @@ select {
   --color-info: var(--color-info);
 
   /* Static fallbacks (explicit per-mode usage if needed) */
-  --color-bg-light: #FCFBF9;
-  --color-bg-dark: #1a1a1a;
+  --color-bg-light: #f7f8fa;
+  --color-bg-dark: #0f1115;
   --color-surface-light: #ffffff;
-  --color-surface-dark: #262626;
-  --color-sidebar-light: #F4F1EC;
-  --color-sidebar-dark: #1F1F1E;
-  --color-border-light: #e5e7eb;
-  --color-border-dark: #333333;
-  --color-text-main-light: #0a0a0a;
-  --color-text-main-dark: #ededed;
-  --color-text-muted-light: #6B7280;
-  --color-text-muted-dark: #9ca3af;
+  --color-surface-dark: #191e26;
+  --color-sidebar-light: #f7f8fa;
+  --color-sidebar-dark: #0f1115;
+  --color-border-light: #dce2e9;
+  --color-border-dark: #2d3744;
+  --color-text-main-light: #171d27;
+  --color-text-main-dark: #f1f5f9;
+  --color-text-muted-light: #657084;
+  --color-text-muted-dark: #a5b0bf;
 
   /* Radius */
   --radius-brand: var(--radius-brand);
@@ -195,8 +194,8 @@ select {
   --shadow-elev: var(--shadow-elev);
   --shadow-focus: var(--shadow-focus);
 
-  /* Font - Inter primary, Apple system fallback */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+  /* System UI keeps the operational surface crisp and fast to load. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
 }
 
 /* Base */
@@ -210,11 +209,11 @@ body {
 
 /* Selection - brand-tinted */
 ::selection {
-  background-color: rgba(229, 106, 74, 0.25);
+  background-color: rgba(237, 101, 72, 0.25);
   color: var(--color-primary);
 }
 .dark ::selection {
-  background-color: rgba(229, 106, 74, 0.3);
+  background-color: rgba(241, 112, 82, 0.3);
   color: var(--color-brand-300);
 }
 
@@ -241,19 +240,19 @@ input, textarea {
 /* Thin horizontal scrollbar - brand colored */
 .scroll-thin-x {
   scrollbar-width: thin;
-  scrollbar-color: rgba(229, 106, 74, 0.55) transparent;
+  scrollbar-color: rgba(237, 101, 72, 0.55) transparent;
 }
 .dark .scroll-thin-x {
-  scrollbar-color: rgba(229, 106, 74, 0.55) transparent;
+  scrollbar-color: rgba(241, 112, 82, 0.55) transparent;
 }
 .scroll-thin-x::-webkit-scrollbar { height: 3px; }
 .scroll-thin-x::-webkit-scrollbar-track { background: transparent; }
 .scroll-thin-x::-webkit-scrollbar-thumb {
-  background: rgba(229, 106, 74, 0.55);
+  background: rgba(237, 101, 72, 0.55);
   border-radius: 3px;
 }
 .dark .scroll-thin-x::-webkit-scrollbar-thumb {
-  background: rgba(229, 106, 74, 0.55);
+  background: rgba(241, 112, 82, 0.55);
 }
 
 /* Reusable elevated card */
@@ -280,7 +279,7 @@ input, textarea {
   background: rgba(255, 255, 255, 0.72);
 }
 .dark .bg-vibrancy {
-  background: rgba(38, 38, 38, 0.72);
+  background: rgba(15, 17, 21, 0.74);
 }
 
 /* macOS Traffic Lights */
@@ -421,25 +420,25 @@ button:disabled,
 .dot-grid-bg {
   background-color: var(--color-bg);
   background-image:
-    radial-gradient(circle at 15% 20%, rgba(229, 106, 74, 0.10) 0%, transparent 40%),
-    radial-gradient(circle at 85% 80%, rgba(229, 106, 74, 0.06) 0%, transparent 40%);
+    radial-gradient(circle at 15% 20%, rgba(237, 101, 72, 0.09) 0%, transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(237, 101, 72, 0.05) 0%, transparent 40%);
 }
 .dark .dot-grid-bg {
   background-image:
-    radial-gradient(circle at 15% 20%, rgba(229, 106, 74, 0.18) 0%, transparent 40%),
-    radial-gradient(circle at 85% 80%, rgba(229, 106, 74, 0.10) 0%, transparent 40%);
+    radial-gradient(circle at 15% 20%, rgba(241, 112, 82, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(241, 112, 82, 0.06) 0%, transparent 40%);
 }
 
 /* Landing-style faint grid overlay (use absolute pos inside relative parent) */
 .landing-grid {
   background-image:
-    linear-gradient(to right, var(--color-accent) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--color-accent) 1px, transparent 1px);
-  background-size: 40px 40px;
-  opacity: 0.08;
+    linear-gradient(to right, var(--color-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-border) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.28;
 }
 .dark .landing-grid {
-  opacity: 0.04;
+  opacity: 0.16;
 }
 
 /* React Flow controls: match app theme */

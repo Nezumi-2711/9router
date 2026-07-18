@@ -3,21 +3,23 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
+const REMOVED_TUNNEL_SETTING_KEYS = new Set([
+  "tunnelEnabled",
+  "tunnelUrl",
+  "tunnelProvider",
+  "tailscaleEnabled",
+  "tailscaleUrl",
+  "tunnelDashboardAccess",
+]);
 
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
-  tunnelEnabled: false,
-  tunnelUrl: "",
-  tunnelProvider: "cloudflare",
-  tailscaleEnabled: false,
-  tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
-  tunnelDashboardAccess: true,
   authMode: "password",
   oidcIssuerUrl: "",
   oidcClientId: "",
@@ -51,12 +53,18 @@ const DEFAULT_SETTINGS = {
 async function readRaw() {
   const db = await getAdapter();
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-  return row ? parseJson(row.data, {}) : {};
+  return removeTunnelSettings(row ? parseJson(row.data, {}) : {});
+}
+
+function removeTunnelSettings(settings) {
+  const sanitized = { ...(settings || {}) };
+  for (const key of REMOVED_TUNNEL_SETTING_KEYS) delete sanitized[key];
+  return sanitized;
 }
 
 // Merge raw settings with defaults; backward-compat for missing keys
 function mergeWithDefaults(raw) {
-  const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+  const merged = { ...DEFAULT_SETTINGS, ...removeTunnelSettings(raw) };
   for (const [key, defVal] of Object.entries(DEFAULT_SETTINGS)) {
     if (merged[key] === undefined) {
       if (
@@ -84,8 +92,8 @@ export async function updateSettings(updates) {
   let next;
   db.transaction(() => {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
-    const current = row ? parseJson(row.data, {}) : {};
-    next = { ...current, ...updates };
+    const current = removeTunnelSettings(row ? parseJson(row.data, {}) : {});
+    next = removeTunnelSettings({ ...current, ...updates });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
       [stringifyJson(next)]

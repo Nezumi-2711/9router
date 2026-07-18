@@ -22,16 +22,7 @@ describe("CLI tool endpoint resolution", () => {
     })).toBe("https://router.customer.example");
   });
 
-  it("uses a public endpoint for externally hosted tools when the dashboard is local", () => {
-    expect(resolveCliToolBaseUrl({
-      appUrl: "http://localhost:20128",
-      requiresExternalUrl: true,
-      tunnelEnabled: true,
-      tunnelPublicUrl: "https://tunnel.example/",
-      cloudEnabled: true,
-      cloudUrl: "https://cloud.example",
-    })).toBe("https://tunnel.example");
-
+  it("uses the cloud endpoint for externally hosted tools when the dashboard is local", () => {
     expect(resolveCliToolBaseUrl({
       appUrl: "http://localhost:20128",
       requiresExternalUrl: true,

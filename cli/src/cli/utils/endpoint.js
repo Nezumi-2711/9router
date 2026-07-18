@@ -1,32 +1,20 @@
-const api = require("../api/client");
-
-const COLORS = {
-  reset: "\x1b[0m",
-  green: "\x1b[32m"
-};
-
 /**
- * Get endpoint URL based on tunnel status
+ * Get the local gateway endpoint.
  * @param {number} port - Local server port
- * @returns {Promise<{endpoint: string, tunnelEnabled: boolean}>}
+ * @returns {Promise<{endpoint: string}>}
  */
 async function getEndpoint(port) {
-  const result = await api.getTunnelStatus();
-  const tunnelEnabled = result.success && result.data?.enabled === true;
-  const publicUrl = result.success ? result.data?.publicUrl : "";
-  
-  const endpoint = tunnelEnabled && publicUrl ? `${publicUrl}/v1` : `http://localhost:${port}/v1`;
-  return { endpoint, tunnelEnabled };
+  return { endpoint: `http://localhost:${port}/v1` };
 }
 
 /**
- * Get endpoint with color formatting
+ * Get the local gateway endpoint for terminal output.
  * @param {number} port - Local server port
- * @returns {Promise<string>} Colored endpoint string
+ * @returns {Promise<string>}
  */
 async function getEndpointColored(port) {
-  const { endpoint, tunnelEnabled } = await getEndpoint(port);
-  return tunnelEnabled ? `${COLORS.green}${endpoint}${COLORS.reset}` : endpoint;
+  const { endpoint } = await getEndpoint(port);
+  return endpoint;
 }
 
 module.exports = { getEndpoint, getEndpointColored };

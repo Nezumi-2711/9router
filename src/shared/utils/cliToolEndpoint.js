@@ -24,10 +24,6 @@ export function isLocalCliToolUrl(value) {
 export function resolveCliToolBaseUrl({
   appUrl = "",
   requiresExternalUrl = false,
-  tunnelEnabled = false,
-  tunnelPublicUrl = "",
-  tailscaleEnabled = false,
-  tailscaleUrl = "",
   cloudEnabled = false,
   cloudUrl = "",
   configuredBaseUrl = "",
@@ -40,8 +36,6 @@ export function resolveCliToolBaseUrl({
 
   // Tools such as Cursor cannot call a loopback URL from their remote service.
   if (requiresExternalUrl) {
-    if (tunnelEnabled && tunnelPublicUrl) return trimTrailingSlashes(tunnelPublicUrl);
-    if (tailscaleEnabled && tailscaleUrl) return trimTrailingSlashes(tailscaleUrl);
     if (cloudEnabled && cloudUrl) return trimTrailingSlashes(cloudUrl);
   }
 

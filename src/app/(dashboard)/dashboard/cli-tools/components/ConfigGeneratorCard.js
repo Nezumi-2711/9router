@@ -173,10 +173,6 @@ export default function ConfigGeneratorCard({
   activeProviders,
   availableModels = [],
   cloudEnabled,
-  tunnelEnabled,
-  tunnelPublicUrl,
-  tailscaleEnabled,
-  tailscaleUrl,
   initialConfig,
   onSaveConfig,
 }) {
@@ -366,10 +362,6 @@ export default function ConfigGeneratorCard({
             value={customBaseUrl}
             onChange={setCustomBaseUrl}
             appUrl={baseUrl}
-            tunnelEnabled={tunnelEnabled}
-            tunnelPublicUrl={tunnelPublicUrl}
-            tailscaleEnabled={tailscaleEnabled}
-            tailscaleUrl={tailscaleUrl}
             cloudEnabled={cloudEnabled}
             cloudUrl={process.env.NEXT_PUBLIC_CLOUD_URL}
           />

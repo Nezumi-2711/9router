@@ -66,6 +66,33 @@ describe("Schema migrations", () => {
     expect(JSON.parse(settings.data)).toEqual({ foo: "bar" });
   });
 
+  it("removes legacy tunnel settings during upgrade", async () => {
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run(
+      `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+      [JSON.stringify({
+        keep: "value",
+        tunnelEnabled: true,
+        tunnelUrl: "https://tunnel.example",
+        tunnelProvider: "cloudflare",
+        tailscaleEnabled: true,
+        tailscaleUrl: "https://machine.ts.net",
+        tunnelDashboardAccess: true,
+      })],
+    );
+    db.run(`UPDATE _meta SET value = '8' WHERE key = 'schemaVersion'`);
+    db.close?.();
+
+    delete global._dbAdapter;
+    vi.resetModules();
+    const { getAdapter: getAdapter2 } = await import("@/lib/db/driver.js");
+    const db2 = await getAdapter2();
+    const settings = db2.get(`SELECT data FROM settings WHERE id=1`);
+
+    expect(JSON.parse(settings.data)).toEqual({ keep: "value" });
+  });
+
   it("fresh DB + legacy db.json → imports data automatically", async () => {
     // Simulate user upgrading: place legacy JSON in DATA_DIR before first boot
     const legacy = {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettings, getUserById, validateApiKey } from "@/lib/localDb";
+import { getUserById, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { getDashboardAuthSession, verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 
@@ -47,7 +47,6 @@ const ADMIN_ONLY_PATHS = [
   "/api/providers",
   "/api/provider-nodes",
   "/api/oauth",
-  "/api/tunnel",
   "/api/headroom",
   "/api/pxpipe",
   "/api/media-providers",
@@ -83,18 +82,11 @@ const PROTECTED_API_PATHS = [
   "/api/tags",
   "/api/mcp",
   "/api/translator",
-  "/api/tunnel",
 ];
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
 const LOCAL_ONLY_PATHS = [
   "/api/mcp/",
-  "/api/tunnel/tailscale-install",
-  "/api/tunnel/tailscale-enable",
-  "/api/tunnel/tailscale-disable",
-  "/api/tunnel/tailscale-check",
-  "/api/tunnel/enable",
-  "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
   "/api/auth/reset-password",
@@ -160,7 +152,7 @@ async function canAccessPublicLlmApi(request) {
 
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
-  // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + JWT auth.
+  // Browser on host: loopback Host + Origin + JWT auth.
   if (isLocalRequest(request) && await isAuthenticated(request)) return true;
   return false;
 }
@@ -186,15 +178,6 @@ async function isAdmin(request) {
   if (!session?.userId) return false;
   const user = await getUserById(String(session.userId));
   return user?.isActive === true && user.role === "admin";
-}
-
-// Read settings directly from DB to avoid self-fetch deadlock in proxy
-async function loadSettings() {
-  try {
-    return await getSettings();
-  } catch {
-    return null;
-  }
 }
 
 async function isAuthenticated(request) {
@@ -268,27 +251,6 @@ export async function proxy(request) {
     if (ADMIN_ONLY_DASHBOARD_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
       if (await isAdmin(request)) return NextResponse.next();
       return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
-
-    let tunnelDashboardAccess = true;
-
-    try {
-      const settings = await loadSettings();
-      if (settings) {
-        tunnelDashboardAccess = settings.tunnelDashboardAccess === true;
-
-        // Block tunnel/tailscale access if disabled (redirect to login)
-        if (!tunnelDashboardAccess) {
-          const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
-          const tunnelHost = settings.tunnelUrl ? new URL(settings.tunnelUrl).hostname.toLowerCase() : "";
-          const tailscaleHost = settings.tailscaleUrl ? new URL(settings.tailscaleUrl).hostname.toLowerCase() : "";
-          if ((tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost)) {
-            return NextResponse.redirect(new URL("/login", request.url));
-          }
-        }
-      }
-    } catch {
-      // On error, keep the secure default and block tunnel dashboard access.
     }
 
     // Verify JWT token

@@ -1,7 +1,8 @@
 import { getMachineId } from "@/shared/utils/machine";
-import EndpointPageClient from "./endpoint/EndpointPageClient";
+import { getCurrentDashboardUser } from "@/lib/auth/currentUser";
+import DashboardPageClient from "./DashboardPageClient";
 
 export default async function DashboardPage() {
-  const machineId = await getMachineId();
-  return <EndpointPageClient machineId={machineId} />;
+  const user = await getCurrentDashboardUser();
+  return <DashboardPageClient isAdmin={user?.role === "admin"} />;
 }

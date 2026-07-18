@@ -41,9 +41,7 @@ export function TtsExampleCard({ providerId }) {
   // Form state
   const [input, setInput]               = useState("Hello, this is a text to speech test.");
   const [apiKey, setApiKey]             = useState("");
-  const [useTunnel, setUseTunnel]       = useState(false);
   const [localEndpoint, setLocalEndpoint]   = useState("");
-  const [tunnelEndpoint, setTunnelEndpoint] = useState("");
   const [responseFormat, setResponseFormat] = useState("mp3"); // mp3 | json
   const [audioUrl, setAudioUrl]         = useState("");
   const [jsonResponse, setJsonResponse] = useState(null); // Store JSON response
@@ -68,11 +66,6 @@ export function TtsExampleCard({ providerId }) {
       .then((r) => r.json())
       .then((d) => { setApiKey((d.keys || []).find((k) => k.isActive !== false)?.key || ""); })
       .catch(() => {});
-    fetch("/api/tunnel/status")
-      .then((r) => r.json())
-      .then((d) => { if (d.publicUrl) setTunnelEndpoint(d.publicUrl); })
-      .catch(() => {});
-
     // Pre-select default voice based on provider config
     if (config.voiceSource === "hardcoded") {
       const defaultModel = config.hasModelSelector && config.modelKey
@@ -171,7 +164,7 @@ export function TtsExampleCard({ providerId }) {
       )
     : languages;
 
-  const endpoint = useTunnel ? tunnelEndpoint : localEndpoint;
+  const endpoint = localEndpoint;
   // For ElevenLabs/config-driven: prefer manual voiceId (if any), else fall back to selectedVoice
   const activeVoiceId = config.hasVoiceIdInput ? (voiceId || selectedVoice) : selectedVoice;
   const modelFull = (() => {
@@ -243,18 +236,6 @@ export function TtsExampleCard({ providerId }) {
               <span className="w-full min-w-0 flex-1 px-3 py-1.5 text-sm font-mono text-text-main bg-sidebar rounded-lg truncate">
                 {endpoint}/v1/audio/speech
               </span>
-              {tunnelEndpoint && (
-                <button
-                  onClick={() => setUseTunnel((v) => !v)}
-                  title={useTunnel ? "Using tunnel" : "Using local"}
-                  className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg border shrink-0 transition-colors ${
-                    useTunnel ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-text-muted hover:text-primary"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[14px]">wifi_tethering</span>
-                  Tunnel
-                </button>
-              )}
             </div>
           </Row>
           <Row label="API Key">
@@ -457,7 +438,7 @@ export function TtsExampleCard({ providerId }) {
             <pre className="bg-sidebar rounded-lg px-3 py-2.5 text-xs font-mono text-text-main overflow-x-auto whitespace-pre-wrap break-all">{curlSnippet}</pre>
           </div>
 
-          {error && <p className="text-xs text-red-500 break-words">{error}</p>}
+          {error && <p className="text-xs text-red-500 wrap-break-word">{error}</p>}
 
           {/* Audio player */}
           {audioUrl ? (
