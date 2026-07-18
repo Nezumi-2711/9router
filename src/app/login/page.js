@@ -1,7 +1,40 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, Input } from "@/shared/components";
+import Button from "@/shared/components/Button";
+import Card from "@/shared/components/Card";
+import Input from "@/shared/components/Input";
+import { Skeleton } from "@/shared/components/Loading";
+
+function LoginLoadingState() {
+  return (
+    <main className="relative isolate min-h-dvh overflow-hidden bg-bg px-4 py-8 sm:px-6 lg:px-8" aria-busy="true">
+      <div className="landing-grid pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div className="relative mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-xl flex-col justify-center py-10">
+        <div className="mb-8 space-y-3">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-12 w-64 max-w-full" />
+          <Skeleton className="h-5 w-80 max-w-full" />
+        </div>
+        <Card elev padding="lg" className="space-y-7">
+          <div className="space-y-2">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-32" />
+            </div>
+          </div>
+          <div className="space-y-5">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-11 w-full" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-11 w-full" />
+            <Skeleton className="h-11 w-full bg-brand-500/25" />
+          </div>
+        </Card>
+      </div>
+    </main>
+  );
+}
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -81,7 +114,7 @@ export default function LoginPage() {
         if (data.retryAfter) setRetryAfter(Number(data.retryAfter));
       }
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      setError("We couldn't sign you in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -105,7 +138,7 @@ export default function LoginPage() {
         setError(data.error || "Failed to set password");
       }
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      setError("We couldn't set your password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -120,139 +153,153 @@ export default function LoginPage() {
 
   // Show loading state while checking password
   if (hasPassword === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="text-text-muted mt-4">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoginLoadingState />;
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg p-4 relative overflow-hidden">
-      {/* Faint grid background */}
-      <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
-      <div className="relative z-10 w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">9Router (Remake)</h1>
-          <p className="text-xs text-text-muted mb-2">Forked from the official 9Router project and remade by Nezumi.</p>
-          <p className="text-text-muted">
+    <main className="relative isolate min-h-dvh overflow-hidden bg-bg px-4 py-8 sm:px-6 lg:px-8">
+      <div className="landing-grid pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div className="relative mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-xl flex-col justify-center py-10">
+        <header className="mb-8">
+          <p className="mb-5 text-sm font-semibold tracking-[-0.02em] text-text-main">9Router (Remake)</p>
+          <h1 className="max-w-none text-[clamp(2.125rem,6vw,3rem)] font-semibold leading-[0.96] tracking-[-0.065em] text-text-main">
+            Route your models from one secure workspace.
+          </h1>
+          <p className="mt-4 max-w-[38ch] text-pretty text-sm leading-6 text-text-muted sm:text-base">
             {authMode === "oidc" && oidcConfigured
-              ? "Sign in with your OIDC provider to access the dashboard"
-              : "Enter your username and password to access the dashboard"}
+              ? "Sign in with your identity provider to access the dashboard."
+              : "Enter your administrator credentials to access the dashboard."}
           </p>
-        </div>
+        </header>
 
-        <Card>
+        <Card elev padding="lg">
+          <div className="mb-7">
+            <div>
+              <p className="text-sm font-medium text-text-muted">Dashboard access</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-text-main">
+                {mustChange ? "Set a new password" : "Sign in"}
+              </h2>
+            </div>
+          </div>
+
           {mustChange ? (
-            <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
-              <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
-                Set a new password before accessing the dashboard remotely.
-              </p>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">New password</label>
+            <form onSubmit={handleSetNewPassword} className="flex flex-col gap-5">
+              <div className="rounded-[10px] border border-warning/25 bg-warning/10 p-3 text-sm leading-5 text-warning">
+                <p>Set a new password before accessing the dashboard remotely.</p>
+              </div>
+              <div>
                 <Input
+                  label="New password"
                   type="password"
                   placeholder="Enter new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  error={error || undefined}
                   required
                   autoFocus
                 />
-                {error && <p className="text-xs text-red-500">{error}</p>}
               </div>
-              <Button type="submit" variant="primary" className="w-full" loading={loading} disabled={!newPassword}>
+              <Button type="submit" variant="primary" fullWidth loading={loading} disabled={!newPassword}>
                 Set password
               </Button>
             </form>
           ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             {oidcAvailable && (
-              <Button type="button" variant="primary" className="w-full" onClick={handleOidcLogin}>
+              <Button
+                type="button"
+                variant={passwordAvailable ? "outline" : "primary"}
+                fullWidth
+                onClick={handleOidcLogin}
+              >
                 {oidcLoginLabel}
               </Button>
             )}
 
-            {oidcAvailable && passwordAvailable && <div className="h-px bg-border/60" />}
+            {oidcAvailable && passwordAvailable && (
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-text-subtle">or use a password</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            )}
 
             {passwordAvailable ? (
-              <form onSubmit={handleLogin} className="flex flex-col gap-4">
+              <form onSubmit={handleLogin} className="flex flex-col gap-5">
                 {((authMode === "oidc" && !oidcConfigured) || (authMode === "both" && !oidcConfigured)) && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
-                    OIDC login is enabled, but the issuer/client fields are not configured yet. Password login is still available for recovery.
-                  </p>
+                  <div className="rounded-[10px] border border-warning/25 bg-warning/10 p-3 text-xs leading-5 text-warning">
+                    <p>OIDC is enabled but not configured. Password login remains available for recovery.</p>
+                  </div>
                 )}
 
                 {authMode === "both" && oidcConfigured && (
-                  <p className="text-xs text-text-muted text-center">
-                    Password and OIDC login are both enabled.
+                  <p className="text-xs leading-5 text-text-muted">
+                    Password and identity-provider sign-in are both available.
                   </p>
                 )}
 
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Username</label>
-                  <Input
-                    type="text"
-                    placeholder="Enter username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    autoComplete="username"
-                    autoFocus={!oidcAvailable}
-                  />
-                </div>
+                <Input
+                  label="Username"
+                  type="text"
+                  placeholder="Enter username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoComplete="username"
+                  autoFocus={!oidcAvailable}
+                />
 
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Password</label>
+                <div className="space-y-2">
                   <Input
+                    label="Password"
                     type="password"
                     placeholder="Enter password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    error={error || undefined}
                     required
                     autoComplete="current-password"
                   />
-                  {error && <p className="text-xs text-red-500">{error}</p>}
                   {retryAfter > 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                      Locked. Retry in <span className="font-mono">{retryAfter}s</span>.
+                    <p className="text-xs text-warning" role="status" aria-live="polite">
+                      Locked. Retry in <span className="font-mono tabular-nums">{retryAfter}s</span>.
                     </p>
                   )}
                   {resetHint && (
-                    <p className="text-xs text-text-muted">
-                      Forgot password? Open <code className="bg-sidebar px-1 rounded">9router</code> CLI on the host → <b>Settings</b> → <b>Reset Password to Default</b>.
-                    </p>
+                    <div className="rounded-[10px] border border-border-subtle bg-surface-2/70 p-3 text-xs leading-5 text-text-muted">
+                      <p>
+                        Reset the password from the host: open <code className="rounded bg-bg px-1.5 py-0.5 font-mono text-text-main">9router</code>, then go to <strong className="font-medium text-text-main">Settings</strong> and select <strong className="font-medium text-text-main">Reset Password to Default</strong>.
+                      </p>
+                    </div>
                   )}
                 </div>
 
                 <Button
                   type="submit"
                   variant="primary"
-                  className="w-full"
+                  fullWidth
                   loading={loading}
                   disabled={retryAfter > 0}
                 >
-                  {retryAfter > 0 ? `Wait ${retryAfter}s` : "Login"}
+                  {retryAfter > 0 ? `Wait ${retryAfter}s` : "Sign in"}
                 </Button>
 
-                <p className="text-xs text-center text-text-muted mt-2">
-                  Default administrator login: <code className="bg-sidebar px-1 rounded">admin</code> / <code className="bg-sidebar px-1 rounded">123456</code>
-                </p>
                 {hasPassword === false && (
-                  <p className="text-xs text-center text-amber-600 dark:text-amber-400">
-                    Security risk: no password set. You will be asked to set one when logging in remotely.
-                  </p>
+                  <div className="rounded-[10px] border border-warning/25 bg-warning/10 p-3 text-xs leading-5 text-warning">
+                    <p>No password is set. Remote sign-in requires you to create one before accessing the dashboard.</p>
+                  </div>
                 )}
               </form>
             ) : (
-              error && <p className="text-xs text-red-500">{error}</p>
+              error && <p className="text-xs text-danger" role="alert">{error}</p>
             )}
           </div>
           )}
         </Card>
+        <footer className="mt-6 max-w-md text-xs leading-5 text-text-subtle">
+          Forked from the official 9Router project and remade by Nezumi.
+        </footer>
       </div>
-    </div>
+    </main>
   );
 }
