@@ -207,6 +207,28 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Dashboard canvas: keep the application background in the same restrained
+   slate-and-coral family as its control surfaces. */
+.dashboard-shell {
+  background: var(--color-bg);
+}
+
+.dashboard-main {
+  background: var(--color-bg);
+}
+
+.dark .dashboard-shell {
+  background: #141619;
+}
+
+.dark .dashboard-main {
+  background-color: #141619;
+  background-image:
+    radial-gradient(ellipse 58% 42% at 78% -8%, rgba(241, 112, 82, 0.1), transparent 72%),
+    radial-gradient(ellipse 46% 34% at 8% 110%, rgba(94, 112, 133, 0.08), transparent 74%),
+    linear-gradient(180deg, rgba(24, 27, 31, 0.55), rgba(20, 22, 25, 0));
+}
+
 /* Selection - brand-tinted */
 ::selection {
   background-color: rgba(237, 101, 72, 0.25);
@@ -439,6 +461,13 @@ button:disabled,
 }
 .dark .landing-grid {
   opacity: 0.16;
+}
+
+.dark .dashboard-main .landing-grid {
+  background-image:
+    linear-gradient(to right, rgba(165, 177, 192, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(165, 177, 192, 0.08) 1px, transparent 1px);
+  opacity: 1;
 }
 
 /* React Flow controls: match app theme */

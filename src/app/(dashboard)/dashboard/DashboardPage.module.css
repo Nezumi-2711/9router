@@ -43,8 +43,8 @@
 
 :global(.dark) .console::before {
   background:
-    radial-gradient(circle at 74% 4%, rgba(241, 112, 82, 0.07), transparent 28%),
-    linear-gradient(180deg, rgba(33, 40, 51, 0.42), transparent 82%);
+    radial-gradient(ellipse 46% 36% at 74% 4%, rgba(241, 112, 82, 0.11), transparent 70%),
+    linear-gradient(180deg, rgba(31, 36, 44, 0.5), transparent 82%);
 }
 
 .intro {
@@ -120,6 +120,98 @@
   color: var(--console-muted);
   font-size: 0.75rem;
   line-height: 1.45;
+}
+
+.quickStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.statCard,
+.statSkeleton {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  column-gap: 0.75rem;
+  min-width: 0;
+  min-height: 6.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--console-rule);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--console-panel-strong) 88%, transparent);
+}
+
+.statCard {
+  position: relative;
+  overflow: hidden;
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.statCard::after {
+  position: absolute;
+  inset: auto 0 0;
+  height: 1px;
+  content: "";
+  background: linear-gradient(to right, var(--console-signal), transparent 58%);
+  opacity: 0.48;
+}
+
+.statCard:hover {
+  border-color: color-mix(in srgb, var(--console-signal) 40%, var(--console-rule));
+  background: color-mix(in srgb, var(--console-panel-strong) 97%, transparent);
+  transform: translateY(-0.1rem);
+}
+
+.statIcon {
+  display: grid;
+  grid-row: 1 / span 2;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--console-signal) 30%, var(--console-rule));
+  border-radius: 0.5rem;
+  background: var(--console-signal-soft);
+  color: var(--console-signal);
+  font-size: 1rem;
+}
+
+.statLabel {
+  overflow: hidden;
+  margin: 0;
+  color: var(--console-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.statValue {
+  margin: 0.15rem 0 0;
+  color: var(--console-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(1.25rem, 2vw, 1.55rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.statDescription {
+  grid-column: 1 / -1;
+  align-self: end;
+  margin: 0.65rem 0 0;
+  color: var(--console-muted);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.statSkeleton {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
 }
 
 .accessPanel,
@@ -235,6 +327,185 @@
   background: transparent !important;
   box-shadow: none !important;
   color: var(--console-ink) !important;
+}
+
+.quickConnect {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.875rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--console-rule);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--console-panel) 76%, transparent);
+}
+
+.quickConnectHeader,
+.quickConnectIntro {
+  display: flex;
+  align-items: center;
+}
+
+.quickConnectHeader {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quickConnectIntro {
+  min-width: 0;
+  gap: 0.75rem;
+}
+
+.quickConnectIcon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--console-signal) 30%, var(--console-rule));
+  border-radius: 0.5rem;
+  background: var(--console-signal-soft);
+  color: var(--console-signal);
+}
+
+.quickConnectTitle,
+.quickConnectDescription,
+.connectGuidance {
+  margin: 0;
+}
+
+.quickConnectTitle {
+  color: var(--console-ink);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.quickConnectDescription {
+  margin-top: 0.2rem;
+  color: var(--console-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.connectStatus {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+  color: var(--console-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.connectStatusIndicator {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 0.18rem color-mix(in srgb, var(--color-success) 18%, transparent);
+}
+
+.connectStatus[data-state="action-required"] .connectStatusIndicator {
+  background: var(--console-signal);
+  box-shadow: 0 0 0 0.18rem var(--console-signal-soft);
+}
+
+.snippetTabs {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+  scrollbar-width: none;
+}
+
+.snippetTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.snippetTabs button {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  color: var(--console-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.snippetTabs button:hover {
+  background: color-mix(in srgb, var(--console-panel-strong) 72%, transparent);
+  color: var(--console-ink);
+}
+
+.snippetTabs button[data-active="true"] {
+  border-color: color-mix(in srgb, var(--console-signal) 38%, var(--console-rule));
+  background: var(--console-signal-soft);
+  color: var(--console-signal);
+}
+
+.snippetPanel {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--console-rule) 92%, transparent);
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--console-canvas) 50%, var(--console-panel) 50%);
+}
+
+.snippetPre {
+  max-height: 11rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.875rem 3rem 0.875rem 0.875rem;
+  color: var(--console-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.snippetCopy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--console-panel-strong) 78%, transparent);
+  color: var(--console-muted);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.snippetCopy:hover {
+  border-color: color-mix(in srgb, var(--console-signal) 35%, var(--console-rule));
+  background: var(--console-signal-soft);
+  color: var(--console-signal);
+}
+
+.connectGuidance {
+  color: var(--console-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.connectGuidance code {
+  color: var(--console-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
 }
 
 .keysPanel {
@@ -354,6 +625,10 @@
     min-height: auto;
   }
 
+  .quickStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .accessPanel::before {
     display: none;
   }
@@ -369,11 +644,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .statCard,
   .routeLocal,
   .routeRemote {
     transition: none;
   }
 
+  .statCard:hover,
   .routeLocal:hover,
   .routeRemote:hover {
     transform: none;

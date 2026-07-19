@@ -6,6 +6,8 @@ import { Button, Card, ConfirmModal, Input, Modal, Toggle } from "@/shared/compo
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { formatVietnamDateTime } from "@/shared/utils/dateTime";
 import EndpointRow from "./components/EndpointRow";
+import QuickStatsBar, { QuickStatsBarSkeleton } from "./components/QuickStatsBar";
+import QuickConnectSnippet from "./components/QuickConnectSnippet";
 import SecurityWarning from "./components/SecurityWarning";
 import styles from "../DashboardPage.module.css";
 
@@ -24,6 +26,9 @@ export default function APIPageClient({ isAdmin }) {
   const [confirmState, setConfirmState] = useState(null);
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState(new Set());
+  const [quickStats, setQuickStats] = useState(null);
+  const [quickStatsLoading, setQuickStatsLoading] = useState(true);
+  const [providerSummary, setProviderSummary] = useState(null);
 
   const baseUrl = useSyncExternalStore(subscribeToBrowserLocation, getBaseUrl, () => "/v1");
   const isRemoteHost = useSyncExternalStore(subscribeToBrowserLocation, getRemoteHost, () => false);
@@ -57,13 +62,48 @@ export default function APIPageClient({ isAdmin }) {
     }
   }, []);
 
+  const fetchQuickStats = useCallback(async () => {
+    setQuickStatsLoading(true);
+    try {
+      const [statsResponse, providersResponse] = await Promise.all([
+        fetch("/api/usage/stats?period=today"),
+        fetch("/api/providers/client?pageSize=500"),
+      ]);
+
+      if (!statsResponse.ok) throw new Error("Failed to fetch usage statistics");
+
+      const statsData = await statsResponse.json();
+      setQuickStats(statsData);
+
+      if (providersResponse.ok) {
+        const providersData = await providersResponse.json();
+        const connections = providersData.connections || [];
+        const activeConnections = connections.filter(
+          (connection) => connection.isActive && connection.testStatus === "active",
+        );
+        setProviderSummary({
+          active: activeConnections.length,
+          total: providersData.pagination?.total ?? connections.length,
+        });
+      } else {
+        setProviderSummary(null);
+      }
+    } catch {
+      setQuickStats(null);
+      setProviderSummary(null);
+    } finally {
+      setQuickStatsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const initialize = window.setTimeout(() => {
       void fetchKeys();
+      void fetchQuickStats();
       if (isAdmin) void loadSettings();
     }, 0);
     return () => window.clearTimeout(initialize);
-  }, [fetchKeys, isAdmin, loadSettings]);
+  }, [fetchKeys, fetchQuickStats, isAdmin, loadSettings]);
 
   const handleRequireApiKey = async (value) => {
     try {
@@ -167,6 +207,7 @@ export default function APIPageClient({ isAdmin }) {
             <div className={`${styles.skeletonLine} h-3 w-4/5`} />
           </div>
         </div>
+        <QuickStatsBarSkeleton />
         <div className={`${styles.skeletonPanel} flex flex-col gap-4`}>
           <div className={`${styles.skeletonLine} h-5 w-40`} />
           <div className={`${styles.skeletonLine} h-14 w-full`} />
@@ -184,6 +225,7 @@ export default function APIPageClient({ isAdmin }) {
     : requireApiKey
       ? "Local access is ready and API key enforcement is enabled."
       : "Local access is ready. Enable API key enforcement to protect requests.";
+  const hasActiveApiKey = keys.some((key) => key.isActive !== false);
 
   return (
     <div className={styles.console}>
@@ -199,6 +241,12 @@ export default function APIPageClient({ isAdmin }) {
         </aside>
       </section>
       <p className="sr-only" role="status" aria-live="polite">{copied ? "Value copied to clipboard." : ""}</p>
+
+      {quickStatsLoading ? (
+        <QuickStatsBarSkeleton />
+      ) : (
+        <QuickStatsBar stats={quickStats} providerSummary={providerSummary} />
+      )}
 
       {loadError && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300" role="alert">
@@ -224,6 +272,13 @@ export default function APIPageClient({ isAdmin }) {
           copied={copied}
           onCopy={copy}
           className={`${styles.routeLocal} ${styles.routeInput}`}
+        />
+        <QuickConnectSnippet
+          baseUrl={baseUrl}
+          hasApiKey={hasActiveApiKey}
+          requireApiKey={requireApiKey}
+          copied={copied}
+          onCopy={copy}
         />
       </Card>
 

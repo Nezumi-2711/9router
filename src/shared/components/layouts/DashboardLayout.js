@@ -38,7 +38,7 @@ export default function DashboardLayout({ children }) {
   const removeNotification = useNotificationStore((state) => state.removeNotification);
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-bg">
+    <div className="dashboard-shell flex h-dvh w-full overflow-hidden bg-bg">
       <div className="fixed top-4 right-4 z-80 flex w-[min(92vw,380px)] flex-col gap-2">
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
@@ -91,7 +91,7 @@ export default function DashboardLayout({ children }) {
       </div>
 
       {/* Main content */}
-      <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate bg-bg">
+      <main className="dashboard-main flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate bg-bg">
         {/* Faint grid background */}
         <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
         <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
