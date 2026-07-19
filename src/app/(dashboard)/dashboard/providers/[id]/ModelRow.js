@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
+import ActionMenu from "@/shared/components/ActionMenu";
 
 export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onRemove, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
@@ -16,8 +17,30 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
     : undefined;
   const deleteModel = onRemove || (isCustom ? onDeleteAlias : onDisable);
   const deletesPermanently = !!deleteModel;
-
-  const actionButtonClass = "inline-flex size-7 items-center justify-center rounded-md text-text-muted transition-[background-color,color,transform,box-shadow] duration-150 hover:bg-background hover:text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50";
+  const actionItems = [
+    ...(onTest ? [{
+      id: "test",
+      icon: isTesting ? "progress_activity" : "science",
+      label: isTesting ? "Testing model…" : "Test model",
+      onSelect: onTest,
+      disabled: isTesting,
+      spinning: isTesting,
+    }] : []),
+    {
+      id: "copy",
+      icon: copied === `model-${model.id}` ? "check" : "content_copy",
+      label: copied === `model-${model.id}` ? "Model ID copied" : "Copy model ID",
+      onSelect: () => onCopy(displayModel, `model-${model.id}`),
+    },
+    ...(deleteModel ? [{
+      id: "delete",
+      icon: "delete",
+      label: deletesPermanently ? "Permanently delete model" : "Hide model",
+      onSelect: deleteModel,
+      danger: true,
+      dividerBefore: true,
+    }] : []),
+  ];
 
   return (
     <div className={`group min-w-0 max-w-full rounded-lg border px-3 py-2 transition-colors ${borderColor} hover:bg-sidebar/50 focus-within:border-primary/50`}>
@@ -35,44 +58,8 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
           </span>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-border/80 bg-sidebar/60 p-1 shadow-[0_1px_0_rgb(255_255_255/0.03)]">
-          {onTest && (
-            <button
-              type="button"
-              onClick={onTest}
-              disabled={isTesting}
-              className={actionButtonClass}
-              title={isTesting ? "Testing model" : "Test model"}
-              aria-label={isTesting ? `Testing ${fullModel}` : `Test ${fullModel}`}
-            >
-              <span className="material-symbols-outlined text-[17px]" style={isTesting ? { animation: "spin 1s linear infinite" } : undefined}>
-                {isTesting ? "progress_activity" : "science"}
-              </span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => onCopy(displayModel, `model-${model.id}`)}
-            className={actionButtonClass}
-            title={copied === `model-${model.id}` ? "Copied" : "Copy model ID"}
-            aria-label={copied === `model-${model.id}` ? `${fullModel} copied` : `Copy ${fullModel}`}
-          >
-            <span className="material-symbols-outlined text-[17px]">
-              {copied === `model-${model.id}` ? "check" : "content_copy"}
-            </span>
-          </button>
-          {deleteModel && <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />}
-          {deleteModel && (
-            <button
-              type="button"
-              onClick={deleteModel}
-              className="inline-flex size-7 items-center justify-center rounded-md text-text-muted transition-[background-color,color,transform,box-shadow] duration-150 hover:bg-red-500/12 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 active:scale-95"
-              title={deletesPermanently ? "Permanently remove model from catalogs and saved configurations" : "Hide model from the dashboard catalog"}
-              aria-label={deletesPermanently ? `Permanently delete ${fullModel}` : `Hide ${fullModel}`}
-            >
-              <span className="material-symbols-outlined text-[17px]">delete</span>
-            </button>
-          )}
+        <div className="ml-auto">
+          <ActionMenu ariaLabel={`Actions for ${fullModel}`} items={actionItems} title={`Actions for ${fullModel}`} />
         </div>
       </div>
     </div>
