@@ -36,6 +36,8 @@ function getQuotaTone(percentage) {
   return { bar: "bg-red-500", dot: "bg-red-500", text: "text-red-500" };
 }
 
+const INACTIVE_SESSION_COUNTDOWN = "4h59m";
+
 function TokenQuotaResetStatus({ quota }) {
   const [now, setNow] = useState(() => new Date());
 
@@ -49,7 +51,7 @@ function TokenQuotaResetStatus({ quota }) {
   const countdown = formatResetTime(quota.resetAt, now);
   const isSession = quota.windowType === USER_TOKEN_LIMIT_WINDOWS.SESSION;
   const text = countdown === "-"
-    ? (isSession ? "No tokens pending expiry" : "Reset time unavailable")
+    ? (isSession ? INACTIVE_SESSION_COUNTDOWN : "Reset time unavailable")
     : (isSession ? `Next tokens restore in ${countdown}` : `Resets in ${countdown}`);
 
   return (

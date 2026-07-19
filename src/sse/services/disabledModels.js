@@ -1,4 +1,5 @@
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { getDeletedModels } from "@/lib/db";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -14,7 +15,7 @@ import { stripThinkingSuffix } from "open-sse/translator/concerns/thinkingUnifie
  */
 export async function getDisabledModelResponse(provider, model) {
   try {
-    const disabledModels = await getDisabledModels();
+    const [disabledModels, deletedModels] = await Promise.all([getDisabledModels(), getDeletedModels()]);
     const providerAlias = getProviderAlias(provider) || provider;
     // Thinking variants use a client-facing suffix, e.g. `gpt-5.6-sol(high)`,
     // but dispatch to the base upstream model. Evaluate the disabled policy
@@ -24,12 +25,23 @@ export async function getDisabledModelResponse(provider, model) {
       ...(disabledModels[providerAlias] || []),
       ...(disabledModels[provider] || []),
     ]);
+    const deletedIds = new Set([
+      ...(deletedModels[providerAlias] || []),
+      ...(deletedModels[provider] || []),
+    ]);
 
-    if (!disabledIds.has(model) && !disabledIds.has(baseModel)) return null;
+    const matchesDeletedModel = [...deletedIds].some((modelId) => (
+      model === modelId
+      || baseModel === modelId
+      || (model.startsWith(`${modelId}(`) && model.endsWith(")"))
+    ));
+    if (!matchesDeletedModel && !disabledIds.has(model) && !disabledIds.has(baseModel)) return null;
 
     return errorResponse(
       HTTP_STATUS.NOT_FOUND,
-      `Model ${provider}/${model} is disabled by an administrator`,
+      matchesDeletedModel
+        ? `Model ${provider}/${model} has been deleted by an administrator`
+        : `Model ${provider}/${model} is disabled by an administrator`,
     );
   } catch (error) {
     console.log("Error checking disabled model status:", error);

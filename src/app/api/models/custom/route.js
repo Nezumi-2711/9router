@@ -4,6 +4,7 @@ import {
   addCustomModel,
   deleteCustomModel,
 } from "@/models";
+import { isDeletedModel } from "@/lib/db";
 import { requireAdminUser } from "@/lib/auth/currentUser";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }
     await requireCustomModelCatalogAdmin();
+    if (await isDeletedModel(providerAlias, id)) {
+      return NextResponse.json({ error: "This model was permanently deleted" }, { status: 409 });
+    }
     const added = await addCustomModel({ providerAlias, id, type: type || "llm", name });
     return NextResponse.json({ success: true, added });
   } catch (error) {

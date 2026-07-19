@@ -68,6 +68,7 @@ export default function ProviderDetailPage() {
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
+  const [deletedModelIds, setDeletedModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
   const [oneByOneRunning, setOneByOneRunning] = useState(false);
@@ -186,34 +187,47 @@ export default function ProviderDetailPage() {
 
   const fetchDisabledModels = useCallback(async () => {
     try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" });
-      const data = await res.json();
-      if (res.ok) setDisabledModelIds(data.ids || []);
+      const [disabledRes, deletedRes] = await Promise.all([
+        fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }),
+        fetch(`/api/models/delete?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }),
+      ]);
+      const [disabledData, deletedData] = await Promise.all([disabledRes.json(), deletedRes.json()]);
+      if (disabledRes.ok) setDisabledModelIds(disabledData.ids || []);
+      if (deletedRes.ok) setDeletedModelIds(deletedData.ids || []);
     } catch (error) {
       console.log("Error fetching disabled models:", error);
     }
   }, [providerStorageAlias]);
 
-  const handleDisableModel = async (modelId) => {
-    try {
-      const res = await fetch("/api/models/disabled", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias: providerStorageAlias, ids: [modelId] }),
-      });
-      if (res.ok) await fetchDisabledModels();
-    } catch (error) {
-      console.log("Error disabling model:", error);
-    }
-  };
+  const handlePermanentlyDeleteModel = (modelId, providerAliasOverride = providerStorageAlias) => {
+    const displayAlias = providerAliasOverride === providerStorageAlias
+      ? providerDisplayAlias
+      : providerAliasOverride;
+    setConfirmState({
+      title: "Permanently Delete Model",
+      message: `Permanently delete ${displayAlias}/${modelId}? This removes it from model catalogs, combo memberships, saved tool configurations, and request details. Historical usage remains available. This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          const res = await fetch("/api/models/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ providerAlias: providerAliasOverride, modelId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || "Failed to permanently delete model");
+            return;
+          }
 
-  const handleEnableModel = async (modelId) => {
-    try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(modelId)}`, { method: "DELETE" });
-      if (res.ok) await fetchDisabledModels();
-    } catch (error) {
-      console.log("Error enabling model:", error);
-    }
+          await Promise.all([fetchAliases(), fetchCustomModels(), fetchDisabledModels()]);
+          if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        } catch (error) {
+          console.log("Error permanently deleting model:", error);
+          alert("Failed to permanently delete model");
+        }
+      },
+    });
   };
 
   const handleDisableAll = async (ids) => {
@@ -1042,10 +1056,8 @@ export default function ProviderDetailPage() {
           customModels={customModels}
           copied={copied}
           onCopy={copy}
-          onSetAlias={handleSetAlias}
-          onDeleteAlias={handleDeleteAlias}
           onAddCustomModel={(modelId) => handleAddCustomModel(modelId, "llm", providerStorageAlias)}
-          onDeleteCustomModel={(modelId) => handleDeleteCustomModel(modelId, "llm", providerStorageAlias)}
+          onDeleteModel={(modelId) => handlePermanentlyDeleteModel(modelId, providerStorageAlias)}
           connections={connections}
           isAnthropic={isAnthropicCompatible}
         />
@@ -1067,8 +1079,9 @@ export default function ProviderDetailPage() {
         ))
         .map((entry) => entry.id),
     );
-    const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
-    const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
+    const deletedSet = new Set(deletedModelIds);
+    const displayModels = allModels.filter((model) => !disabledSet.has(model.id) && !deletedSet.has(model.id));
+    const disabledDisplayModels = allModels.filter((model) => disabledSet.has(model.id) && !deletedSet.has(model.id));
     const customModelRows = getProviderCustomModelRows({
       customModels,
       modelAliases,
@@ -1090,18 +1103,11 @@ export default function ProviderDetailPage() {
             copied={copied}
             onCopy={copy}
             onSetAlias={() => {}}
-            onDeleteAlias={() => {
-              if (model.source === "custom") {
-                handleDeleteCustomModel(model.id, "llm", providerStorageAlias);
-              } else {
-                handleDeleteAlias(model.alias);
-              }
-            }}
+            onDeleteAlias={() => handlePermanentlyDeleteModel(model.id, providerStorageAlias)}
             testStatus={modelTestResults[model.id]}
             onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
             isTesting={testingModelIds.has(model.id)}
             isCustom
-            isAdded
             isFree={false}
             caps={getCaps(`${providerId}/${model.id}`)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
@@ -1129,10 +1135,10 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               isAdded={addedModelIds.has(model.id)}
-              onAdd={() => handleAddCustomModel(model.id, "llm", providerStorageAlias)}
               onRemove={addedModelIds.has(model.id)
-                ? () => handleDeleteCustomModel(model.id, "llm", providerStorageAlias)
+                ? () => handlePermanentlyDeleteModel(model.id, providerStorageAlias)
                 : undefined}
+              onDisable={() => handlePermanentlyDeleteModel(model.id, providerStorageAlias)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
@@ -1195,25 +1201,33 @@ export default function ProviderDetailPage() {
           );
         })()}
 
-        {/* Disabled models — restorable */}
+        {/* Disabled models stay restorable; permanently deleted models do not. */}
         {disabledDisplayModels.length > 0 && (
           <div className="w-full mt-2">
             <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
             <div className="flex flex-wrap gap-2">
-              {disabledDisplayModels.map((m) => (
+              {disabledDisplayModels.map((model) => (
                 <button
-                  key={m.id}
-                  onClick={() => handleEnableModel(m.id)}
+                  key={model.id}
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(model.id)}`, { method: "DELETE" });
+                      if (res.ok) await fetchDisabledModels();
+                    } catch (error) {
+                      console.log("Error enabling model:", error);
+                    }
+                  }}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
                   title="Restore model"
                 >
                   <span className="material-symbols-outlined text-[13px]">add</span>
-                  {m.id}
+                  {model.id}
                 </button>
               ))}
             </div>
           </div>
         )}
+
       </div>
     );
   };

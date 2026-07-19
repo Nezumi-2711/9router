@@ -11,8 +11,26 @@ function invalidate() {
   cache = { value: null, expiresAt: 0 };
 }
 
+export function invalidatePricingCache() {
+  invalidate();
+}
+
 async function getUserPricing() {
   return await pricingKv.getAll();
+}
+
+async function removeDeletedModelsFromPricing(pricing) {
+  const { isDeletedModel } = await import("./deletedModelsRepo.js");
+  const filtered = {};
+
+  for (const [provider, models] of Object.entries(pricing)) {
+    const entries = await Promise.all(Object.entries(models).map(async ([modelId, modelPricing]) => (
+      (await isDeletedModel(provider, modelId)) ? null : [modelId, modelPricing]
+    )));
+    filtered[provider] = Object.fromEntries(entries.filter(Boolean));
+  }
+
+  return filtered;
 }
 
 export async function getPricing() {
@@ -44,12 +62,15 @@ export async function getPricing() {
     }
   }
 
-  cache = { value: merged, expiresAt: now + CACHE_TTL_MS };
-  return merged;
+  const filtered = await removeDeletedModelsFromPricing(merged);
+  cache = { value: filtered, expiresAt: now + CACHE_TTL_MS };
+  return filtered;
 }
 
 export async function getPricingForModel(provider, model) {
   if (!model) return null;
+  const { isDeletedModel } = await import("./deletedModelsRepo.js");
+  if (await isDeletedModel(provider, model)) return null;
   const userPricing = await getUserPricing();
   if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
   const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");

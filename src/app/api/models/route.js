@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { getDeletedModels, isDeletedModelReference } from "@/lib/db";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
@@ -9,13 +10,16 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 export async function GET() {
   try {
     const modelAliases = await getModelAliases();
-    const disabled = await getDisabledModels();
+    const [disabled, deleted] = await Promise.all([getDisabledModels(), getDeletedModels()]);
 
     const models = AI_MODELS
       .filter((m) => {
         const alias = getProviderAlias(m.provider) || m.provider;
         const list = disabled[alias] || disabled[m.provider] || [];
-        return !list.includes(m.model);
+        const deletedIds = [...(deleted[alias] || []), ...(deleted[m.provider] || [])];
+        return !list.includes(m.model) && !deletedIds.some((id) => (
+          m.model === id || (m.model.startsWith(`${id}(`) && m.model.endsWith(")"))
+        ));
       })
       .map((m) => {
         const fullModel = `${m.provider}/${m.model}`;
@@ -43,6 +47,10 @@ export async function PUT(request) {
 
     if (!model || !alias) {
       return NextResponse.json({ error: "Model and alias required" }, { status: 400 });
+    }
+
+    if (await isDeletedModelReference(model)) {
+      return NextResponse.json({ error: "This model was permanently deleted" }, { status: 409 });
     }
 
     const modelAliases = await getModelAliases();

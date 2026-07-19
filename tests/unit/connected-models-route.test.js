@@ -5,6 +5,7 @@ const getProviderConnections = vi.fn();
 const getCustomModels = vi.fn();
 const getProviderNodes = vi.fn();
 const getUsers = vi.fn();
+const getDeletedModels = vi.fn();
 const getDisabledModels = vi.fn();
 const requireUsageDashboardUser = vi.fn();
 const getCapabilitiesForModel = vi.fn();
@@ -16,23 +17,30 @@ vi.mock("@/models", () => ({
   getProviderNodes,
 }));
 
-vi.mock("@/lib/db", () => ({ getUsers }));
+vi.mock("@/lib/db", () => ({ getUsers, getDeletedModels }));
 
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels }));
 vi.mock("@/lib/auth/currentUser", () => ({
   requireUsageDashboardUser,
 }));
-vi.mock("@/shared/constants/models", () => ({
-  AI_MODELS: [
-    { provider: "alpha", model: "enabled", name: "Enabled model" },
-    { provider: "alpha", model: "disabled", name: "Disabled model" },
-    { provider: "beta", model: "inactive", name: "Inactive provider model" },
-  ],
+vi.mock("open-sse/config/providerModels.js", () => ({
+  getModelsByProviderId: (providerId) => ({
+    alpha: [
+      { id: "enabled", name: "Enabled model" },
+      { id: "disabled", name: "Disabled model" },
+    ],
+    beta: [{ id: "inactive", name: "Inactive provider model" }],
+    "orbit-provider": [
+      { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
+      { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
+    ],
+  }[providerId] || []),
 }));
 vi.mock("@/shared/constants/providers", () => {
   const providers = {
     alpha: { id: "alpha", alias: "alpha-alias", name: "Alpha", color: "#111111" },
     beta: { id: "beta", alias: "beta-alias", name: "Beta", color: "#222222" },
+    "orbit-provider": { id: "orbit-provider", alias: "orbit", name: "Orbit Provider", color: "#8B5CF6" },
   };
 
   return {
@@ -54,12 +62,14 @@ describe("GET /api/models/connected", () => {
     getCustomModels.mockReset();
     getProviderNodes.mockReset();
     getUsers.mockReset();
+    getDeletedModels.mockReset();
     getDisabledModels.mockReset();
     requireUsageDashboardUser.mockReset();
     getCapabilitiesForModel.mockReset();
 
     getModelAliases.mockResolvedValue({ "preferred-alpha": "alpha-alias/enabled" });
     getDisabledModels.mockResolvedValue({ "alpha-alias": ["disabled"] });
+    getDeletedModels.mockResolvedValue({});
     getCustomModels.mockResolvedValue([
       { providerAlias: "alpha-alias", id: "enabled", name: "Enabled model", type: "llm" },
       { providerAlias: "alpha-alias", id: "disabled", name: "Disabled model", type: "llm" },
@@ -101,7 +111,7 @@ describe("GET /api/models/connected", () => {
     ]));
   });
 
-  it("does not include registry models without an explicit added-model record", async () => {
+  it("includes registry models from a viable standard provider connection", async () => {
     requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
     getCustomModels.mockResolvedValue([]);
 
@@ -109,7 +119,56 @@ describe("GET /api/models/connected", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.models).toEqual([]);
+    expect(body.models).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fullModel: "alpha-alias/enabled",
+        providerAlias: "alpha-alias",
+        isCustom: false,
+      }),
+      expect.objectContaining({
+        fullModel: "alpha-alias/disabled",
+        disabled: true,
+        isCustom: false,
+      }),
+    ]));
+    expect(body.models).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ fullModel: "beta-alias/inactive" }),
+    ]));
+  });
+
+  it("uses the storage alias for registry models when a provider ID differs from its alias", async () => {
+    requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
+    getCustomModels.mockResolvedValue([
+      { providerAlias: "orbit", id: "claude-opus-4-8", name: "Preferred Orbit Opus", type: "llm" },
+    ]);
+    getProviderConnections.mockResolvedValue([
+      { provider: "orbit-provider", isActive: true, apiKey: "secret" },
+    ]);
+    getModelAliases.mockResolvedValue({ "orbit-opus": "orbit/claude-opus-4-8" });
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.models).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        provider: expect.objectContaining({ id: "orbit-provider", name: "Orbit Provider" }),
+        providerAlias: "orbit",
+        model: "claude-opus-4-8",
+        name: "Preferred Orbit Opus",
+        fullModel: "orbit/claude-opus-4-8",
+        alias: "orbit-opus",
+        isCustom: true,
+      }),
+      expect.objectContaining({
+        providerAlias: "orbit",
+        model: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
+        fullModel: "orbit/claude-opus-4-6",
+        isCustom: false,
+      }),
+    ]));
+    expect(body.models.filter((model) => model.fullModel === "orbit/claude-opus-4-8")).toHaveLength(1);
   });
 
   it("excludes disabled models for non-administrators", async () => {
@@ -185,6 +244,20 @@ describe("GET /api/models/connected", () => {
     expect(response.status).toBe(200);
     expect(body.models).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ fullModel: `${providerId}/claude-company` }),
+    ]));
+  });
+
+  it("does not expose permanently deleted models to administrators", async () => {
+    requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
+    getDeletedModels.mockResolvedValue({ "alpha-alias": ["disabled", "enabled"] });
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.models).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ fullModel: "alpha-alias/disabled" }),
+      expect.objectContaining({ fullModel: "alpha-alias/enabled" }),
     ]));
   });
 

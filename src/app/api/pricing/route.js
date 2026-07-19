@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPricing, updatePricing, resetPricing, resetAllPricing } from "@/lib/localDb.js";
+import { isDeletedModel } from "@/lib/db";
 import { getDefaultPricing } from "open-sse/providers/pricing.js";
 
 /**
@@ -46,6 +47,12 @@ export async function PATCH(request) {
       }
 
       for (const [model, pricing] of Object.entries(models)) {
+        if (await isDeletedModel(provider, model)) {
+          return NextResponse.json(
+            { error: `Model was permanently deleted: ${provider}/${model}` },
+            { status: 409 },
+          );
+        }
         if (typeof pricing !== "object" || pricing === null) {
           return NextResponse.json(
             { error: `Invalid pricing for model: ${provider}/${model}` },

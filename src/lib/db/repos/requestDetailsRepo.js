@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { appendUsageAccessClause, getUsageAccessScope } from "./usageAccessScope.js";
+import { isDeletedModelSync, matchesDeletedModelUsage } from "./deletedModelsRepo.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -36,6 +37,13 @@ async function getObservabilityConfig() {
 let writeBuffer = [];
 let flushTimer = null;
 let isFlushing = false;
+
+export function purgeRequestDetailBuffer(providerAliases, modelId) {
+  if (!Array.isArray(providerAliases) || !modelId) return;
+  writeBuffer = writeBuffer.filter(
+    (detail) => !matchesDeletedModelUsage(detail.provider, detail.model, providerAliases, modelId),
+  );
+}
 
 function sanitizeHeaders(headers) {
   if (!headers || typeof headers !== "object") return {};
@@ -75,6 +83,7 @@ async function flushToDatabase() {
 
       db.transaction(() => {
         for (const item of items) {
+          if (isDeletedModelSync(db, item.provider, item.model)) continue;
           if (!item.id) item.id = generateDetailId(item.model);
           if (!item.timestamp) item.timestamp = new Date().toISOString();
           if (item.request?.headers) item.request.headers = sanitizeHeaders(item.request.headers);

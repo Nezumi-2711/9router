@@ -49,6 +49,7 @@ export default function ModelSelectModal({
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
+  const [deletedModels, setDeletedModels] = useState({});
 
   const fetchCombos = async () => {
     try {
@@ -103,13 +104,21 @@ export default function ModelSelectModal({
 
   const fetchDisabledModels = async () => {
     try {
-      const res = await fetch("/api/models/disabled");
-      if (!res.ok) throw new Error(`Failed to fetch disabled models: ${res.status}`);
-      const data = await res.json();
-      setDisabledModels(data.disabled || {});
+      const [disabledRes, deletedRes] = await Promise.all([
+        fetch("/api/models/disabled"),
+        fetch("/api/models/delete"),
+      ]);
+      if (!disabledRes.ok) throw new Error(`Failed to fetch disabled models: ${disabledRes.status}`);
+      const [disabledData, deletedData] = await Promise.all([
+        disabledRes.json(),
+        deletedRes.ok ? deletedRes.json() : Promise.resolve({ deleted: {} }),
+      ]);
+      setDisabledModels(disabledData.disabled || {});
+      setDeletedModels(deletedData.deleted || {});
     } catch (error) {
       console.error("Error fetching disabled models:", error);
       setDisabledModels({});
+      setDeletedModels({});
     }
   };
 
@@ -377,13 +386,22 @@ export default function ModelSelectModal({
         ...(disabledModels[aliasKey] || []),
         ...(disabledModels[providerId] || []),
       ]);
-      if (disabledIds.size === 0) return;
-      group.models = group.models.filter((m) => !disabledIds.has(m.id));
+      const deletedIds = new Set([
+        ...(deletedModels[aliasKey] || []),
+        ...(deletedModels[providerId] || []),
+      ]);
+      if (disabledIds.size === 0 && deletedIds.size === 0) return;
+      group.models = group.models.filter((model) => !disabledIds.has(model.id) && ![
+        ...deletedIds,
+      ].some((deletedModelId) => (
+        model.id === deletedModelId
+        || (model.id.startsWith(`${deletedModelId}(`) && model.id.endsWith(")"))
+      )));
       if (group.models.length === 0) delete groups[providerId];
     });
 
     return groups;
-  }, [availableModels, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders]);
+  }, [availableModels, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, deletedModels, kindFilter, activeProviders]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

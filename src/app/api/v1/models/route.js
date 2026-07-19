@@ -7,6 +7,7 @@ import {
 } from "@/shared/constants/providers";
 import { getApiKeyByKey, getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
+import { getDeletedModels } from "@/lib/db";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
@@ -263,6 +264,20 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
   }
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && disabledByAlias[alias].includes(modelId);
 
+  let deletedByAlias = {};
+  try {
+    deletedByAlias = await getDeletedModels();
+  } catch (e) {
+    console.log("Could not fetch permanently deleted models");
+  }
+  const isDeleted = (modelId, ...providerAliases) => providerAliases.some((providerAlias) => (
+    Array.isArray(deletedByAlias[providerAlias])
+    && deletedByAlias[providerAlias].some((deletedModelId) => (
+      modelId === deletedModelId
+      || (modelId.startsWith(`${deletedModelId}(`) && modelId.endsWith(")"))
+    ))
+  ));
+
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
     if (!activeConnectionByProvider.has(conn.provider)) {
@@ -296,7 +311,7 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
       for (const model of providerModels) {
         if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id)) continue;
+        if (isDisabled(alias, model.id) || isDeleted(model.id, alias, providerId)) continue;
         models.push({
           id: `${alias}/${model.id}`,
           object: "model",
@@ -314,6 +329,7 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
 
       const modelId = String(customModel.id).trim();
       if (!modelId) continue;
+      if (isDeleted(modelId, providerAlias)) continue;
 
       models.push({
         id: `${providerAlias}/${modelId}`,
@@ -450,7 +466,11 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
         // imageToText custom models stay in the LLM list (vision-capable chat models)
         const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;
-        if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+        if (
+          isDisabled(outputAlias, modelId)
+          || isDisabled(staticAlias, modelId)
+          || isDeleted(modelId, outputAlias, staticAlias, providerId)
+        ) continue;
 
         const model = {
           id: `${outputAlias}/${modelId}`,

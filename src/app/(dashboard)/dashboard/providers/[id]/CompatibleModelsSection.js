@@ -4,7 +4,7 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteModel, onTest, testStatus, isTesting }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -61,9 +61,9 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         </div>
       </div>
       <button
-        onClick={onDeleteAlias}
+        onClick={onDeleteModel}
         className="p-1 hover:bg-red-50 rounded text-red-500"
-        title="Remove model"
+        title="Permanently remove model from catalogs and saved configurations"
       >
         <span className="material-symbols-outlined text-sm">delete</span>
       </button>
@@ -71,7 +71,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
   );
 }
 
-export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, connections, isAnthropic }) {
+export default function CompatibleModelsSection({ providerStorageAlias, providerDisplayAlias, modelAliases, customModels, copied, onCopy, onDeleteModel, onAddCustomModel, connections, isAnthropic }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -202,7 +202,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               fullModel={`${providerDisplayAlias}/${id}`}
               copied={copied}
               onCopy={onCopy}
-              onDeleteAlias={() => source === "custom" ? onDeleteCustomModel(id) : onDeleteAlias(alias)}
+              onDeleteModel={() => onDeleteModel(id)}
               onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
               testStatus={modelTestResults[id]}
               isTesting={testingModelId === id}
@@ -221,9 +221,8 @@ CompatibleModelsSection.propTypes = {
   customModels: PropTypes.arrayOf(PropTypes.object),
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
-  onDeleteAlias: PropTypes.func.isRequired,
+  onDeleteModel: PropTypes.func.isRequired,
   onAddCustomModel: PropTypes.func.isRequired,
-  onDeleteCustomModel: PropTypes.func.isRequired,
   connections: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,
     isActive: PropTypes.bool,

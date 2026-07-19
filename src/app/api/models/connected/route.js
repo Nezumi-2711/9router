@@ -7,6 +7,7 @@ import {
 } from "@/models";
 import { getUsers } from "@/lib/db";
 import { disableModels, enableModels, getDisabledModels } from "@/lib/disabledModelsDb";
+import { getDeletedModels } from "@/lib/db";
 import { requireAdminUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
 import {
   AI_PROVIDERS,
@@ -15,6 +16,7 @@ import {
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
+import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +73,58 @@ function getCompatibleProviderLabel(providerId, node, connection) {
   };
 }
 
+function getModelDisabledState(disabledModels, storageAlias, providerEntry, modelId) {
+  const disabled = new Set([
+    ...(disabledModels[storageAlias] || []),
+    ...(disabledModels[providerEntry.providerId] || []),
+    ...(disabledModels[providerEntry.providerAlias] || []),
+  ]);
+  return disabled.has(modelId);
+}
+
+function isDeletedModelId(deletedModels, storageAlias, providerEntry, modelId) {
+  const deleted = new Set([
+    ...(deletedModels[storageAlias] || []),
+    ...(deletedModels[providerEntry.providerId] || []),
+    ...(deletedModels[providerEntry.providerAlias] || []),
+  ]);
+  return [...deleted].some((deletedModelId) => (
+    modelId === deletedModelId
+    || (modelId.startsWith(`${deletedModelId}(`) && modelId.endsWith(")"))
+  ));
+}
+
+function createConnectedModel({
+  disabledModels,
+  deletedModels,
+  fullModel,
+  isCustom,
+  modelAliases,
+  modelId,
+  name,
+  providerEntry,
+  storageAlias,
+}) {
+  if (isDeletedModelId(deletedModels, storageAlias, providerEntry, modelId)) return null;
+  const caps = getCapabilitiesForModel(providerEntry.providerId, modelId);
+
+  return {
+    provider: providerEntry.provider,
+    providerAlias: storageAlias,
+    model: modelId,
+    name: name || modelId,
+    fullModel,
+    alias: modelAliases.get(fullModel) || modelId,
+    disabled: getModelDisabledState(disabledModels, storageAlias, providerEntry, modelId),
+    isCustom,
+    caps: {
+      vision: caps.vision,
+      search: caps.search,
+      reasoning: caps.reasoning,
+    },
+  };
+}
+
 function getForbiddenResponse(error) {
   if (error.message === "Unauthorized") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -81,23 +135,25 @@ function getForbiddenResponse(error) {
   return null;
 }
 
-// GET /api/models/connected - List administrator-added LLMs from providers with
-// a usable active connection. Provider registries and live /models responses are
-// discovery sources only; a customModels record is the explicit availability source.
+// GET /api/models/connected - List LLMs available through providers with a
+// usable active connection. Registry models are available immediately, while
+// customModels records extend the catalog and can provide administrator names.
 export async function GET() {
   try {
     const user = await requireUsageDashboardUser();
 
-    const [connections, customModels, disabledModels, modelAliases, providerNodes, users] = await Promise.all([
+    const [connections, customModels, disabledModels, deletedModels, modelAliases, providerNodes, users] = await Promise.all([
       getProviderConnections(),
       getCustomModels(),
       getDisabledModels(),
+      getDeletedModels(),
       getModelAliases(),
       getProviderNodes(),
       getUsers(),
     ]);
 
     const connectedProviderByAlias = new Map();
+    const connectedProviderById = new Map();
     for (const connection of connections) {
       if (!isViableConnection(connection)) continue;
 
@@ -108,13 +164,16 @@ export async function GET() {
         continue;
       }
 
+      const providerEntry = {
+        providerId: connection.provider,
+        providerAlias: getProviderAlias(connection.provider) || connection.provider,
+        provider: getProviderLabel(connection.provider),
+      };
+      connectedProviderById.set(connection.provider, providerEntry);
+
       for (const alias of getConnectionProviderAliases(connection)) {
         if (!connectedProviderByAlias.has(alias)) {
-          connectedProviderByAlias.set(alias, {
-            providerId: connection.provider,
-            providerAlias: getProviderAlias(connection.provider) || connection.provider,
-            provider: getProviderLabel(connection.provider),
-          });
+          connectedProviderByAlias.set(alias, providerEntry);
         }
       }
     }
@@ -156,45 +215,64 @@ export async function GET() {
 
     const aliasByFullModel = getAliasByFullModel(modelAliases);
     const seenFullModels = new Set();
-    const models = customModels
-      .filter((customModel) => customModel?.id && getModelType(customModel) === "llm")
-      .map((customModel) => {
-        const providerEntry = connectedProviderByAlias.get(customModel.providerAlias)
-          || compatibleProviderByAlias.get(customModel.providerAlias);
-        if (!providerEntry) return null;
+    const models = [];
+    const addModel = ({ isCustom, modelId, name, providerEntry, storageAlias }) => {
+      const fullModel = `${storageAlias}/${modelId}`;
+      if (seenFullModels.has(fullModel)) return;
+      seenFullModels.add(fullModel);
+      const connectedModel = createConnectedModel({
+        disabledModels,
+        deletedModels,
+        fullModel,
+        isCustom,
+        modelAliases: aliasByFullModel,
+        modelId,
+        name,
+        providerEntry,
+        storageAlias,
+      });
+      if (connectedModel) models.push(connectedModel);
+    };
 
-        const modelId = String(customModel.id).trim();
-        if (!modelId) return null;
+    // Custom registrations can supply an administrator-defined name. Add them
+    // first so they take precedence when a model is also present in the registry.
+    for (const customModel of customModels) {
+      if (!customModel?.id || getModelType(customModel) !== "llm") continue;
 
-        const storageAlias = customModel.providerAlias;
-        const fullModel = `${storageAlias}/${modelId}`;
-        if (seenFullModels.has(fullModel)) return null;
-        seenFullModels.add(fullModel);
+      const storageAlias = customModel.providerAlias;
+      const providerEntry = connectedProviderByAlias.get(storageAlias)
+        || connectedProviderById.get(storageAlias)
+        || compatibleProviderByAlias.get(storageAlias);
+      const modelId = String(customModel.id).trim();
+      if (!providerEntry || !modelId) continue;
 
-        const disabled = new Set([
-          ...(disabledModels[storageAlias] || []),
-          ...(disabledModels[providerEntry.providerId] || []),
-          ...(disabledModels[providerEntry.providerAlias] || []),
-        ]);
-        const caps = getCapabilitiesForModel(providerEntry.providerId, modelId);
+      addModel({
+        isCustom: true,
+        modelId,
+        name: customModel.name,
+        providerEntry,
+        storageAlias,
+      });
+    }
 
-        return {
-          provider: providerEntry.provider,
-          providerAlias: storageAlias,
-          model: modelId,
-          name: customModel.name || modelId,
-          fullModel,
-          alias: aliasByFullModel.get(fullModel) || modelId,
-          disabled: disabled.has(modelId),
-          isCustom: true,
-          caps: {
-            vision: caps.vision,
-            search: caps.search,
-            reasoning: caps.reasoning,
-          },
-        };
-      })
-      .filter(Boolean)
+    // Standard providers declare their model catalogs in the registry. Expose
+    // those models after a usable connection exists; compatible providers stay
+    // custom-model-only because their available models are runtime-defined.
+    for (const providerEntry of connectedProviderById.values()) {
+      const storageAlias = providerEntry.providerAlias;
+      for (const model of getModelsByProviderId(providerEntry.providerId)) {
+        if (!model?.id || getModelType(model) !== "llm") continue;
+        addModel({
+          isCustom: false,
+          modelId: model.id,
+          name: model.name,
+          providerEntry,
+          storageAlias,
+        });
+      }
+    }
+
+    const visibleModels = models
       .filter((model) => user.role === "admin" || !model.disabled)
       .sort((a, b) => (
         a.provider.name.localeCompare(b.provider.name)
@@ -202,7 +280,7 @@ export async function GET() {
         || a.model.localeCompare(b.model)
       ));
 
-    return NextResponse.json({ models });
+    return NextResponse.json({ models: visibleModels });
   } catch (error) {
     const accessError = getForbiddenResponse(error);
     if (accessError) return accessError;

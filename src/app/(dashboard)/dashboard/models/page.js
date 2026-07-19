@@ -254,8 +254,8 @@ export default function ModelsPage() {
           </div>
           <p className="mt-1 text-sm text-text-muted">
             {canManage
-              ? "Manage models explicitly added from connected providers."
-              : "Browse added models currently available through connected providers."}
+              ? "Manage models available from connected providers."
+              : "Browse models currently available through connected providers."}
           </p>
         </div>
         <label className="relative block w-full sm:w-80">
@@ -276,7 +276,7 @@ export default function ModelsPage() {
             <p className="mt-1 text-lg font-semibold tabular-nums text-text-main">{providerCount}</p>
           </div>
           <div className="bg-surface px-4 py-3">
-            <p className="text-xs font-medium text-text-muted">Added models</p>
+            <p className="text-xs font-medium text-text-muted">Available models</p>
             <p className="mt-1 text-lg font-semibold tabular-nums text-text-main">{models.length}</p>
           </div>
         </section>
@@ -296,7 +296,7 @@ export default function ModelsPage() {
           <span className="material-symbols-outlined text-[32px] text-text-muted">search_off</span>
           <p className="mt-2 text-sm text-text-muted">
             {models.length === 0
-              ? "No models have been added. Open a connected provider and add a model first."
+              ? "No models are available. Add an active provider connection or register a custom model first."
               : "No models match your search."}
           </p>
         </Card>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias, deleteModelAlias } from "@/models";
+import { isDeletedModelReference } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ export async function PUT(request) {
 
     if (!model || !alias) {
       return NextResponse.json({ error: "Model and alias required" }, { status: 400 });
+    }
+
+    if (await isDeletedModelReference(model)) {
+      return NextResponse.json({ error: "This model was permanently deleted" }, { status: 409 });
     }
 
     await setModelAlias(alias, model);
