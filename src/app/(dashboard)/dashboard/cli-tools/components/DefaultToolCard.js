@@ -6,6 +6,20 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
 
+const DUPLICATE_MODEL_COLORS = [
+  "border-blue-400 bg-blue-50 dark:bg-blue-950",
+  "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
+  "border-amber-400 bg-amber-50 dark:bg-amber-950",
+  "border-purple-400 bg-purple-50 dark:bg-purple-950",
+  "border-rose-400 bg-rose-50 dark:bg-rose-950",
+];
+
+const getModelOccurrence = (models, model, index) => {
+  const total = models.filter((item) => item === model).length;
+  const occurrence = models.slice(0, index + 1).filter((item) => item === model).length;
+  return { total, occurrence };
+};
+
 export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, activeProviders = [], availableModels = [], cloudEnabled = false, initialConfig, onSaveConfig }) {
   const [copiedField, setCopiedField] = useState(null);
   const [showModelModal, setShowModelModal] = useState(false);
@@ -65,12 +79,12 @@ export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, active
   };
 
   const addSelectedModel = (model) => {
-    if (!model?.value || selectedModels.includes(model.value)) return;
+    if (!model?.value) return;
     setSelectedModels((current) => [...current, model.value]);
   };
 
-  const removeSelectedModel = (model) => {
-    setSelectedModels((current) => current.filter((value) => value !== model.value));
+  const removeSelectedModel = (index) => {
+    setSelectedModels((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const handleSave = async () => {
@@ -119,16 +133,22 @@ export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, active
           </div>
           {selectedModels.length ? (
             <div className="flex flex-wrap gap-2">
-              {selectedModels.map((model) => (
-                <div key={model} className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-bg-secondary py-1 pl-2 pr-1 text-xs text-text-main">
-                  <button type="button" onClick={() => handleCopy(model, `model-${model}`)} className="min-w-0 truncate hover:text-primary" title="Copy model ID">
-                    {model}
-                  </button>
-                  <button type="button" onClick={() => setSelectedModels((current) => current.filter((value) => value !== model))} className="rounded-full p-1 hover:text-red-500" title="Remove model" aria-label={`Remove ${model}`}>
-                    <span className="material-symbols-outlined block text-[14px]">close</span>
-                  </button>
-                </div>
-              ))}
+              {selectedModels.map((model, index) => {
+                const occurrence = getModelOccurrence(selectedModels, model, index);
+                const colorClass = occurrence.total > 1
+                  ? DUPLICATE_MODEL_COLORS[(occurrence.occurrence - 1) % DUPLICATE_MODEL_COLORS.length]
+                  : "border-border bg-bg-secondary";
+                return (
+                  <div key={`${model}-${index}`} className={`inline-flex max-w-full items-center gap-1 rounded-full border py-1 pl-2 pr-1 text-xs text-text-main ${colorClass}`}>
+                    <button type="button" onClick={() => handleCopy(model, `model-${model}-${index}`)} className="min-w-0 truncate hover:text-primary" title="Copy model ID">
+                      {model}{occurrence.total > 1 && <span className="ml-1 text-[10px] font-bold opacity-70">#{occurrence.occurrence}</span>}
+                    </button>
+                    <button type="button" onClick={() => removeSelectedModel(index)} className="rounded-full p-1 hover:text-red-500" title="Remove model" aria-label={`Remove ${model} instance ${index + 1}`}>
+                      <span className="material-symbols-outlined block text-[14px]">close</span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : <p className="text-xs text-text-muted">Select every 9Router model you plan to add as a Cursor custom model.</p>}
         </div>
@@ -361,12 +381,12 @@ export default function DefaultToolCard({ toolId, tool, baseUrl, apiKeys, active
         isOpen={showModelModal}
         onClose={() => setShowModelModal(false)}
         onSelect={tool.modelSelection === "multiple" ? addSelectedModel : handleSelectModel}
-        onDeselect={tool.modelSelection === "multiple" ? removeSelectedModel : undefined}
         selectedModel={modelValue}
         activeProviders={activeProviders}
         title={tool.modelSelection === "multiple" ? "Add Cursor custom model" : "Select Model"}
         closeOnSelect={tool.modelSelection !== "multiple"}
         addedModelValues={tool.modelSelection === "multiple" ? selectedModels : []}
+        allowDuplicates={tool.modelSelection === "multiple"}
         availableModels={availableModels}
       />
     </Card>

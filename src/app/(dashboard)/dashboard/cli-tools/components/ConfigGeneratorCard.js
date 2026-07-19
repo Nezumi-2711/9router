@@ -11,6 +11,13 @@ import ApiKeySelect from "./ApiKeySelect";
 
 const DEFAULT_MODEL = "provider/model-id";
 const COPILOT_API_KEY_INPUT = "${input:chat.lm.secret.9router}";
+const DUPLICATE_MODEL_COLORS = [
+  "border-blue-400 bg-blue-50 dark:bg-blue-950",
+  "border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
+  "border-amber-400 bg-amber-50 dark:bg-amber-950",
+  "border-purple-400 bg-purple-50 dark:bg-purple-950",
+  "border-rose-400 bg-rose-50 dark:bg-rose-950",
+];
 
 const normalizeV1 = (url) => {
   const trimmed = (url || "").replace(/\/+$/, "");
@@ -50,6 +57,16 @@ const formatModelName = (modelId) => {
   return aliasSuffix ? `${modelName} (${formatTerms(aliasSuffix)})` : modelName;
 };
 
+const getModelOccurrence = (models, model, index) => {
+  const total = models.filter((item) => item === model).length;
+  const occurrence = models.slice(0, index + 1).filter((item) => item === model).length;
+  return { total, occurrence };
+};
+
+const getDuplicateModelClass = ({ total, occurrence }) => (
+  total > 1 ? DUPLICATE_MODEL_COLORS[(occurrence - 1) % DUPLICATE_MODEL_COLORS.length] : "border-border bg-bg-secondary"
+);
+
 function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "", opencodeModels = [], opencodeDefaultModel = "", coworkThinking = {}, copilotTokens = {}, copilotThinking = {}, connectedModels = [] }) {
   const endpoint = normalizeV1(baseUrl);
   const selectedModels = models.length ? models : [DEFAULT_MODEL];
@@ -83,6 +100,7 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
       // custom provider is "9router", while the 9Router model ID itself keeps
       // its upstream provider prefix (for example, "cc/claude-sonnet-5").
       const configuredModels = opencodeModels.length ? opencodeModels : [DEFAULT_MODEL];
+      const modelsForConfig = [...new Set(configuredModels)];
       const modelId = configuredModels.includes(opencodeDefaultModel)
         ? opencodeDefaultModel
         : configuredModels[0];
@@ -95,7 +113,7 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
               npm: "@ai-sdk/openai-compatible",
               name: "9Router",
               options: { baseURL: endpoint, apiKey },
-              models: Object.fromEntries(configuredModels.map((id) => [id, { name: id }])),
+              models: Object.fromEntries(modelsForConfig.map((id) => [id, { name: id }])),
             },
           },
           model: `9router/${modelId}`,
@@ -280,7 +298,7 @@ export default function ConfigGeneratorCard({
   };
 
   const addModel = (selected) => {
-    if (!selected?.value || selectedModels.includes(selected.value)) return;
+    if (!selected?.value) return;
     setSelectedModels((current) => [...current, selected.value]);
     if (toolId === "cowork") setCoworkThinking((current) => ({ ...current, [selected.value]: "" }));
     if (toolId === "copilot") {
@@ -290,27 +308,33 @@ export default function ConfigGeneratorCard({
     }
   };
 
-  const removeCoworkModel = (model) => {
-    setSelectedModels((current) => current.filter((item) => item !== model));
-    setCoworkThinking((current) => {
-      const remainingThinking = { ...current };
-      delete remainingThinking[model];
-      return remainingThinking;
-    });
+  const removeCoworkModel = (model, index) => {
+    const remainingModels = selectedModels.filter((_, currentIndex) => currentIndex !== index);
+    setSelectedModels(remainingModels);
+    if (!remainingModels.includes(model)) {
+      setCoworkThinking((current) => {
+        const remainingThinking = { ...current };
+        delete remainingThinking[model];
+        return remainingThinking;
+      });
+    }
   };
 
-  const removeCopilotModel = (model) => {
-    setSelectedModels((current) => current.filter((item) => item !== model));
-    setCopilotThinking((current) => {
-      const remaining = { ...current };
-      delete remaining[model];
-      return remaining;
-    });
-    setCopilotTokens((current) => {
-      const remaining = { ...current };
-      delete remaining[model];
-      return remaining;
-    });
+  const removeCopilotModel = (model, index) => {
+    const remainingModels = selectedModels.filter((_, currentIndex) => currentIndex !== index);
+    setSelectedModels(remainingModels);
+    if (!remainingModels.includes(model)) {
+      setCopilotThinking((current) => {
+        const remaining = { ...current };
+        delete remaining[model];
+        return remaining;
+      });
+      setCopilotTokens((current) => {
+        const remaining = { ...current };
+        delete remaining[model];
+        return remaining;
+      });
+    }
   };
 
   const selectClaudeModel = (selected) => {
@@ -332,15 +356,21 @@ export default function ConfigGeneratorCard({
   };
 
   const selectOpenCodeModel = (selected) => {
-    if (!selected?.value || opencodeModels.includes(selected.value)) return;
+    if (!selected?.value) return;
     setOpencodeModels((current) => [...current, selected.value]);
     if (!opencodeDefaultModel) setOpencodeDefaultModel(selected.value);
   };
 
-  const removeOpenCodeModel = (model) => {
-    const remainingModels = opencodeModels.filter((item) => item !== model);
+  const removeOpenCodeModel = (model, index) => {
+    const remainingModels = opencodeModels.filter((_, currentIndex) => currentIndex !== index);
     setOpencodeModels(remainingModels);
-    if (opencodeDefaultModel === model) setOpencodeDefaultModel(remainingModels[0] || "");
+    if (opencodeDefaultModel === model && !remainingModels.includes(model)) {
+      setOpencodeDefaultModel(remainingModels[0] || "");
+    }
+  };
+
+  const removeSelectedModel = (index) => {
+    setSelectedModels((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   return (
@@ -461,14 +491,15 @@ export default function ConfigGeneratorCard({
             </div>
             {opencodeModels.length ? (
               <div className="flex flex-wrap gap-2">
-                {opencodeModels.map((model) => {
+                {opencodeModels.map((model, index) => {
                   const isDefault = model === opencodeDefaultModel;
+                  const occurrence = getModelOccurrence(opencodeModels, model, index);
                   return (
-                    <div key={model} className={`inline-flex items-center gap-1 rounded-full border bg-bg-secondary pr-1 text-xs text-text-main ${isDefault ? "border-primary" : "border-border"}`}>
+                    <div key={`${model}-${index}`} className={`inline-flex items-center gap-1 rounded-full border pr-1 text-xs text-text-main ${getDuplicateModelClass(occurrence)} ${isDefault ? "ring-1 ring-primary" : ""}`}>
                       <button type="button" onClick={() => setOpencodeDefaultModel(model)} className="rounded-full px-2 py-1 hover:text-primary" title="Set as default model">
-                        {model}{isDefault && <span className="ml-1 text-primary">default</span>}
+                        {model}{occurrence.total > 1 && <span className="ml-1 text-[10px] font-bold opacity-70">#{occurrence.occurrence}</span>}{isDefault && <span className="ml-1 text-primary">default</span>}
                       </button>
-                      <button type="button" onClick={() => removeOpenCodeModel(model)} className="rounded-full p-1 hover:text-red-500" title="Remove model" aria-label={`Remove ${model}`}>
+                      <button type="button" onClick={() => removeOpenCodeModel(model, index)} className="rounded-full p-1 hover:text-red-500" title="Remove model" aria-label={`Remove ${model} instance ${index + 1}`}>
                         <span className="material-symbols-outlined block text-[14px]">close</span>
                       </button>
                     </div>
@@ -489,11 +520,12 @@ export default function ConfigGeneratorCard({
             </div>
             {selectedModels.length ? (
               <div className="flex flex-col gap-2">
-                {selectedModels.map((model) => {
+                {selectedModels.map((model, index) => {
                   const thinkingLevels = getThinkingLevelsForModel(model);
+                  const occurrence = getModelOccurrence(selectedModels, model, index);
                   return (
-                    <div key={model} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2">
-                      <span className="min-w-0 flex-1 break-all text-xs text-text-main">{model}</span>
+                    <div key={`${model}-${index}`} className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 ${getDuplicateModelClass(occurrence)}`}>
+                      <span className="min-w-0 flex-1 break-all text-xs text-text-main">{model}{occurrence.total > 1 && <span className="ml-1 text-[10px] font-bold opacity-70">#{occurrence.occurrence}</span>}</span>
                       {thinkingLevels && (
                         <label className="flex items-center gap-2 text-xs font-medium text-text-muted">
                           Reasoning / thinking
@@ -507,7 +539,7 @@ export default function ConfigGeneratorCard({
                           </select>
                         </label>
                       )}
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeCoworkModel(model)} aria-label={`Remove ${model}`}>Remove</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeCoworkModel(model, index)} aria-label={`Remove ${model} instance ${index + 1}`}>Remove</Button>
                     </div>
                   );
                 })}
@@ -526,16 +558,17 @@ export default function ConfigGeneratorCard({
             </div>
             {selectedModels.length ? (
               <div className="flex flex-col gap-2">
-                {selectedModels.map((model) => {
+                {selectedModels.map((model, index) => {
                   const thinkingLevels = getThinkingLevelsForModel(model);
                   const tokens = copilotTokens[model] || DEFAULT_MODEL_TOKEN_LIMITS;
                   const inputOptions = getInputTokenOptions(tokens);
                   const outputOptions = getOutputTokenOptions(tokens);
+                  const occurrence = getModelOccurrence(selectedModels, model, index);
                   return (
-                    <div key={model} className="flex flex-col gap-2 rounded-lg border border-border bg-bg-secondary px-3 py-2">
+                    <div key={`${model}-${index}`} className={`flex flex-col gap-2 rounded-lg border px-3 py-2 ${getDuplicateModelClass(occurrence)}`}>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 flex-1 break-all text-xs font-medium text-text-main">{model}</span>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeCopilotModel(model)} aria-label={`Remove ${model}`}>Remove</Button>
+                        <span className="min-w-0 flex-1 break-all text-xs font-medium text-text-main">{model}{occurrence.total > 1 && <span className="ml-1 text-[10px] font-bold opacity-70">#{occurrence.occurrence}</span>}</span>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeCopilotModel(model, index)} aria-label={`Remove ${model} instance ${index + 1}`}>Remove</Button>
                       </div>
                       {thinkingLevels && (
                         <label className="flex items-center gap-2 text-xs font-medium text-text-muted">
@@ -598,11 +631,14 @@ export default function ConfigGeneratorCard({
             </div>
             {selectedModels.length ? (
               <div className="flex flex-wrap gap-2">
-                {selectedModels.map((model) => (
-                  <button key={model} type="button" onClick={() => setSelectedModels((current) => current.filter((item) => item !== model))} className="inline-flex items-center gap-1 rounded-full border border-border bg-bg-secondary px-2 py-1 text-xs text-text-main hover:border-red-500/50" title="Remove model">
-                    {model}<span className="material-symbols-outlined text-[14px]">close</span>
-                  </button>
-                ))}
+                {selectedModels.map((model, index) => {
+                  const occurrence = getModelOccurrence(selectedModels, model, index);
+                  return (
+                    <button key={`${model}-${index}`} type="button" onClick={() => removeSelectedModel(index)} className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs text-text-main hover:border-red-500/50 ${getDuplicateModelClass(occurrence)}`} title="Remove model">
+                      {model}{occurrence.total > 1 && <span className="text-[10px] font-bold opacity-70">#{occurrence.occurrence}</span>}<span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  );
+                })}
               </div>
             ) : <p className="text-xs text-text-muted">No model selected. The generated file uses <code>{DEFAULT_MODEL}</code> as a placeholder.</p>}
           </div>
@@ -633,6 +669,7 @@ export default function ConfigGeneratorCard({
         title={toolId === "claude" && claudeModelSlot ? `Select ${claudeModelSlot} model` : toolId === "codex" ? "Select Codex model" : toolId === "opencode" ? "Add OpenCode model" : `Add model for ${tool.name}`}
         closeOnSelect={toolId === "claude" || toolId === "codex"}
         addedModelValues={toolId === "claude" ? Object.values(claudeModels).filter(Boolean) : toolId === "codex" ? [codexModel].filter(Boolean) : toolId === "opencode" ? opencodeModels : selectedModels}
+        allowDuplicates={!['claude', 'codex'].includes(toolId)}
         availableModels={availableModels}
       />
       <ManualConfigModal isOpen={configModalOpen} onClose={() => setConfigModalOpen(false)} title={`${tool.name} configuration`} configs={configs} />

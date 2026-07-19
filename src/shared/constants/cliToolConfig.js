@@ -68,7 +68,7 @@ function normalizeModels(value, field = "selectedModels") {
     if (!normalized) throw new CliToolConfigValidationError(`${field} cannot contain empty model IDs`);
     return normalized;
   });
-  return [...new Set(models)];
+  return models;
 }
 
 function normalizeThinking(value, field) {

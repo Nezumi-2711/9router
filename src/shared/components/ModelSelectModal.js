@@ -31,6 +31,7 @@ export default function ModelSelectModal({
   modelAliases = {},
   kindFilter = null,
   addedModelValues = [],
+  allowDuplicates = false,
   closeOnSelect = true,
   availableModels = null,
 }) {
@@ -403,6 +404,8 @@ export default function ModelSelectModal({
     return [...added, ...rest];
   };
 
+  const getAddedModelCount = (value) => addedModelValues.filter((addedValue) => addedValue === value).length;
+
   // Filter models by search query
   const filteredGroups = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -432,7 +435,9 @@ export default function ModelSelectModal({
     const value = model?.value || model?.name || model;
     const isAdded = addedModelValues.includes(value);
 
-    if (isAdded && onDeselect) {
+    if (allowDuplicates) {
+      onSelect(model);
+    } else if (isAdded && onDeselect) {
       onDeselect(model);
     } else {
       onSelect(model);
@@ -459,7 +464,7 @@ export default function ModelSelectModal({
       {/* Info bar */}
       <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
         <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>info</span>
-        <span>Click to add, click again to remove. Changes are saved automatically.</span>
+        <span>{allowDuplicates ? "Click to add. Use the X button on tags to remove. Changes are saved automatically." : "Click to add, click again to remove. Changes are saved automatically."}</span>
       </div>
 
       {/* Search - compact */}
@@ -491,6 +496,7 @@ export default function ModelSelectModal({
             <div className="flex flex-wrap gap-1.5">
               {filteredCombos.map((combo) => {
                 const isSelected = selectedModel === combo.name;
+                const addedCount = getAddedModelCount(combo.name);
                 return (
                   <button
                     key={combo.id}
@@ -509,6 +515,7 @@ export default function ModelSelectModal({
                       <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                     )}
                     {combo.name}
+                    {allowDuplicates && addedCount > 0 && <span className="text-[10px] font-semibold opacity-80">×{addedCount}</span>}
                   </button>
                 );
               })}
@@ -540,6 +547,7 @@ export default function ModelSelectModal({
               {group.models.map((model) => {
                 const isSelected = selectedModel === model.value;
                 const isPlaceholder = model.isPlaceholder;
+                const addedCount = getAddedModelCount(model.value);
                 return (
                   <button
                     key={model.value}
@@ -561,6 +569,7 @@ export default function ModelSelectModal({
                       {addedModelValues.includes(model.value) && !isPlaceholder && (
                         <span className="material-symbols-outlined leading-none" style={{ fontSize: "10px" }}>check</span>
                       )}
+                      {allowDuplicates && addedCount > 0 && !isPlaceholder && <span className="text-[10px] font-semibold opacity-80">×{addedCount}</span>}
                       {isPlaceholder ? (
                         <>
                           <span className="material-symbols-outlined text-[11px]">edit</span>
@@ -614,6 +623,7 @@ ModelSelectModal.propTypes = {
   modelAliases: PropTypes.object,
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
+  allowDuplicates: PropTypes.bool,
   closeOnSelect: PropTypes.bool,
   availableModels: PropTypes.arrayOf(PropTypes.shape({
     fullModel: PropTypes.string.isRequired,

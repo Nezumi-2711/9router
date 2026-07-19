@@ -47,24 +47,24 @@ describe("CLI tool configuration contract", () => {
       apiKeyId: null,
       opencodeModels: ["cc/a", "cc/a", "cx/b"],
       opencodeDefaultModel: "missing/model",
-    })).toMatchObject({ opencodeModels: ["cc/a", "cx/b"], opencodeDefaultModel: "cc/a" });
+    })).toMatchObject({ opencodeModels: ["cc/a", "cc/a", "cx/b"], opencodeDefaultModel: "cc/a" });
 
     expect(normalizeCliToolConfig("cowork", {
       baseUrl: "https://router.example",
       apiKeyMode: "managed",
-      selectedModels: ["cc/a"],
+      selectedModels: ["cc/a", "cc/a"],
       coworkThinking: { "cc/a": "high", "stale/model": "low" },
-    })).toMatchObject({ selectedModels: ["cc/a"], coworkThinking: { "cc/a": "high" } });
+    })).toMatchObject({ selectedModels: ["cc/a", "cc/a"], coworkThinking: { "cc/a": "high" } });
 
     expect(normalizeCliToolConfig("cursor", {
       apiKeyMode: "managed",
       apiKeyId: "key-1",
-      selectedModels: ["cc/a", "cx/b"],
-    })).toEqual({ apiKeyMode: "managed", apiKeyId: "key-1", selectedModels: ["cc/a", "cx/b"] });
+      selectedModels: ["cc/a", "cc/a", "cx/b"],
+    })).toEqual({ apiKeyMode: "managed", apiKeyId: "key-1", selectedModels: ["cc/a", "cc/a", "cx/b"] });
 
     expect(normalizeCliToolConfig("copilot", {
       baseUrl: "https://router.example/v1",
-      selectedModels: ["cc/a"],
+      selectedModels: ["cc/a", "cc/a"],
       copilotThinking: { "cc/a": "high", "stale/model": "low" },
       copilotTokens: {
         "cc/a": { maxInputTokens: 100000, maxOutputTokens: 32000 },
@@ -72,7 +72,7 @@ describe("CLI tool configuration contract", () => {
       },
     })).toEqual({
       baseUrl: "https://router.example/v1",
-      selectedModels: ["cc/a"],
+      selectedModels: ["cc/a", "cc/a"],
       copilotThinking: { "cc/a": "high" },
       copilotTokens: { "cc/a": { maxInputTokens: 100000, maxOutputTokens: 32000 } },
     });

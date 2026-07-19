@@ -74,7 +74,7 @@ describe("permanent model deletion", () => {
     });
     await db.upsertCliToolConfig(cliUser.id, "cowork", {
       baseUrl: "http://127.0.0.1:20127",
-      selectedModels: ["deleted-alias", `${providerPrefix}/gpt-keep`],
+      selectedModels: ["deleted-alias", "deleted-alias", `${providerPrefix}/gpt-keep`],
       coworkThinking: { "deleted-alias": "high", [`${providerPrefix}/gpt-keep`]: "low" },
     });
 
