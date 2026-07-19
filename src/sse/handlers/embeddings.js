@@ -13,7 +13,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { getDisabledModelResponse } from "../services/disabledModels.js";
+import { getDeletedModelResponse } from "../services/deletedModels.js";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -76,8 +76,8 @@ export async function handleEmbeddings(request) {
 
   const { provider, model } = modelInfo;
 
-  const disabledModelResponse = await getDisabledModelResponse(provider, model);
-  if (disabledModelResponse) return disabledModelResponse;
+  const deletedModelResponse = await getDeletedModelResponse(provider, model);
+  if (deletedModelResponse) return deletedModelResponse;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);

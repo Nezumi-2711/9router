@@ -206,13 +206,6 @@ function importLegacyUsage(adapter, data) {
   }
 }
 
-function importLegacyDisabled(adapter, data) {
-  if (!data || typeof data.disabled !== "object") return;
-  for (const [provider, ids] of Object.entries(data.disabled)) {
-    adapter.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('disabledModels', ?, ?)`, [provider, stringifyJson(ids || [])]);
-  }
-}
-
 function importLegacyDetails(adapter, data) {
   if (!data || !Array.isArray(data.records)) return;
   for (const r of data.records) {
@@ -267,9 +260,8 @@ export async function runMigrationOnce(adapter) {
   const alreadyImported = fs.existsSync(MIGRATED_MARKER);
   const legacyMain = readJsonSafe(LEGACY_FILES.main);
   const legacyUsage = readJsonSafe(LEGACY_FILES.usage);
-  const legacyDisabled = readJsonSafe(LEGACY_FILES.disabled);
   const legacyDetails = readJsonSafe(LEGACY_FILES.details);
-  const hasLegacy = !!(legacyMain || legacyUsage || legacyDisabled || legacyDetails);
+  const hasLegacy = !!(legacyMain || legacyUsage || legacyDetails);
 
   if (fresh && hasLegacy && !alreadyImported) {
     const t0 = Date.now();
@@ -280,7 +272,6 @@ export async function runMigrationOnce(adapter) {
       adapter.transaction(() => {
         importLegacyMain(adapter, legacyMain);
         importLegacyUsage(adapter, legacyUsage);
-        importLegacyDisabled(adapter, legacyDisabled);
         importLegacyDetails(adapter, legacyDetails);
         setMetaSync(adapter, "appVersion", getAppVersion());
         setMetaSync(adapter, "backupSchemaVersion", SCHEMA_VERSION);

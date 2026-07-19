@@ -35,7 +35,7 @@ export default function MitmPageClient() {
       setConnections(connectionsData.connections || []);
       setApiKeys(keysData.keys || []);
       setModelAliases(aliasesData.aliases || {});
-      setAvailableModels((modelsData.models || []).filter((model) => !model.disabled));
+      setAvailableModels(modelsData.models || []);
       setCloudEnabled(settingsData.cloudEnabled || false);
     }).catch(() => {});
 

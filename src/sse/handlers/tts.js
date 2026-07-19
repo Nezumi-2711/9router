@@ -11,7 +11,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
-import { getDisabledModelResponse } from "../services/disabledModels.js";
+import { getDeletedModelResponse } from "../services/deletedModels.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -75,8 +75,8 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, ow
 
   const { provider, model } = modelInfo;
 
-  const disabledModelResponse = await getDisabledModelResponse(provider, model);
-  if (disabledModelResponse) return disabledModelResponse;
+  const deletedModelResponse = await getDeletedModelResponse(provider, model);
+  if (deletedModelResponse) return deletedModelResponse;
 
   log.info("ROUTING", `Provider: ${provider}, Voice: ${model}`);
 

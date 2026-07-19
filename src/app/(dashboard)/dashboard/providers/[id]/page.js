@@ -67,7 +67,6 @@ export default function ProviderDetailPage() {
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
-  const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [deletedModelIds, setDeletedModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
@@ -185,17 +184,13 @@ export default function ProviderDetailPage() {
     ? (providerNode?.prefix || providerId)
     : providerAlias;
 
-  const fetchDisabledModels = useCallback(async () => {
+  const fetchDeletedModels = useCallback(async () => {
     try {
-      const [disabledRes, deletedRes] = await Promise.all([
-        fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }),
-        fetch(`/api/models/delete?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }),
-      ]);
-      const [disabledData, deletedData] = await Promise.all([disabledRes.json(), deletedRes.json()]);
-      if (disabledRes.ok) setDisabledModelIds(disabledData.ids || []);
+      const deletedRes = await fetch(`/api/models/delete?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" });
+      const deletedData = await deletedRes.json();
       if (deletedRes.ok) setDeletedModelIds(deletedData.ids || []);
     } catch (error) {
-      console.log("Error fetching disabled models:", error);
+      console.log("Error fetching deleted models:", error);
     }
   }, [providerStorageAlias]);
 
@@ -220,7 +215,7 @@ export default function ProviderDetailPage() {
             return;
           }
 
-          await Promise.all([fetchAliases(), fetchCustomModels(), fetchDisabledModels()]);
+          await Promise.all([fetchAliases(), fetchCustomModels(), fetchDeletedModels()]);
           if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
         } catch (error) {
           console.log("Error permanently deleting model:", error);
@@ -228,36 +223,6 @@ export default function ProviderDetailPage() {
         }
       },
     });
-  };
-
-  const handleDisableAll = async (ids) => {
-    if (!ids.length) return;
-    setConfirmState({
-      title: "Disable All Models",
-      message: `Disable all ${ids.length} model(s)?`,
-      onConfirm: async () => {
-        setConfirmState(null);
-        try {
-          const res = await fetch("/api/models/disabled", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ providerAlias: providerStorageAlias, ids }),
-          });
-          if (res.ok) await fetchDisabledModels();
-        } catch (error) {
-          console.log("Error disabling all models:", error);
-        }
-      }
-    });
-  };
-
-  const handleEnableAll = async () => {
-    try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { method: "DELETE" });
-      if (res.ok) await fetchDisabledModels();
-    } catch (error) {
-      console.log("Error enabling all models:", error);
-    }
   };
 
   // Define callbacks BEFORE the useEffect that uses them
@@ -459,8 +424,8 @@ export default function ProviderDetailPage() {
     fetchConnections();
     fetchAliases();
     fetchCustomModels();
-    fetchDisabledModels();
-  }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels]);
+    fetchDeletedModels();
+  }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDeletedModels]);
 
   // Fetch suggested models from provider's public API (if configured)
   useEffect(() => {
@@ -1069,7 +1034,6 @@ export default function ProviderDetailPage() {
       ...models,
       ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
     ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; });
-    const disabledSet = new Set(disabledModelIds);
     const addedModelIds = new Set(
       customModels
         .filter((entry) => (
@@ -1080,8 +1044,7 @@ export default function ProviderDetailPage() {
         .map((entry) => entry.id),
     );
     const deletedSet = new Set(deletedModelIds);
-    const displayModels = allModels.filter((model) => !disabledSet.has(model.id) && !deletedSet.has(model.id));
-    const disabledDisplayModels = allModels.filter((model) => disabledSet.has(model.id) && !deletedSet.has(model.id));
+    const displayModels = allModels.filter((model) => !deletedSet.has(model.id));
     const customModelRows = getProviderCustomModelRows({
       customModels,
       modelAliases,
@@ -1138,7 +1101,7 @@ export default function ProviderDetailPage() {
               onRemove={addedModelIds.has(model.id)
                 ? () => handlePermanentlyDeleteModel(model.id, providerStorageAlias)
                 : undefined}
-              onDisable={() => handlePermanentlyDeleteModel(model.id, providerStorageAlias)}
+              onDeleteModel={() => handlePermanentlyDeleteModel(model.id, providerStorageAlias)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
             />
@@ -1200,33 +1163,6 @@ export default function ProviderDetailPage() {
             </div>
           );
         })()}
-
-        {/* Disabled models stay restorable; permanently deleted models do not. */}
-        {disabledDisplayModels.length > 0 && (
-          <div className="w-full mt-2">
-            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
-            <div className="flex flex-wrap gap-2">
-              {disabledDisplayModels.map((model) => (
-                <button
-                  key={model.id}
-                  onClick={async () => {
-                    try {
-                      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(model.id)}`, { method: "DELETE" });
-                      if (res.ok) await fetchDisabledModels();
-                    } catch (error) {
-                      console.log("Error enabling model:", error);
-                    }
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                  title="Restore model"
-                >
-                  <span className="material-symbols-outlined text-[13px]">add</span>
-                  {model.id}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
       </div>
     );
@@ -1641,27 +1577,6 @@ export default function ProviderDetailPage() {
               </select>
             )}
           </div>
-          {!isCompatible && (() => {
-            const allIds = [
-              ...models,
-              ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id)),
-            ].filter((m) => { const k = getModelKind(m); return !k || k === "llm"; }).map((m) => m.id);
-            const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
-            return (
-              <div className="flex gap-2">
-                {disabledModelIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="restart_alt" onClick={handleEnableAll}>
-                    Active All
-                  </Button>
-                )}
-                {activeIds.length > 0 && (
-                  <Button size="sm" variant="secondary" icon="block" onClick={() => handleDisableAll(activeIds)}>
-                    Disable All
-                  </Button>
-                )}
-              </div>
-            );
-          })()}
         </div>
         {!!modelsTestError && (
           <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>

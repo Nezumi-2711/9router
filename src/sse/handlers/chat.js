@@ -25,7 +25,7 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
-import { getDisabledModelResponse } from "../services/disabledModels.js";
+import { getDeletedModelResponse } from "../services/deletedModels.js";
 import { checkUserTokenLimit } from "@/lib/tokenLimitEnforcer.js";
 
 /**
@@ -201,8 +201,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
-  const disabledModelResponse = await getDisabledModelResponse(provider, model);
-  if (disabledModelResponse) return disabledModelResponse;
+  const deletedModelResponse = await getDeletedModelResponse(provider, model);
+  if (deletedModelResponse) return deletedModelResponse;
 
   const tokenLimitResult = await checkUserTokenLimit(ownerId, provider);
   if (tokenLimitResult) {

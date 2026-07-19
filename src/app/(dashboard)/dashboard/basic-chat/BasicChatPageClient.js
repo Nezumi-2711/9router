@@ -165,7 +165,7 @@ export default function BasicChatPageClient() {
 
         const providerMap = new Map();
         for (const model of modelsData.models || []) {
-          if (model.disabled || !model.fullModel) continue;
+          if (!model.fullModel) continue;
           const providerId = model.provider?.id || model.providerAlias;
           const providerName = model.provider?.name || humanize(providerId);
 

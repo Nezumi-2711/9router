@@ -44,7 +44,7 @@ function modelWhereClause(column, modelId) {
 
 function removeModelFromKvScopesSync(db, providerAliases, modelId) {
   const aliases = new Set(providerAliases);
-  const result = { aliases: 0, customModels: 0, pricing: 0, disabledModels: 0 };
+  const result = { aliases: 0, customModels: 0, pricing: 0 };
 
   const modelAliasRows = db.all(`SELECT key, value FROM kv WHERE scope = 'modelAliases'`);
   for (const row of modelAliasRows) {
@@ -73,20 +73,6 @@ function removeModelFromKvScopesSync(db, providerAliases, modelId) {
       db.run(`DELETE FROM kv WHERE scope = 'pricing' AND key = ?`, [row.key]);
     } else {
       db.run(`UPDATE kv SET value = ? WHERE scope = 'pricing' AND key = ?`, [stringifyJson(next), row.key]);
-    }
-  }
-
-  const disabledRows = db.all(`SELECT key, value FROM kv WHERE scope = 'disabledModels'`);
-  for (const row of disabledRows) {
-    if (!aliases.has(row.key)) continue;
-    const current = normalizeIds(parseJson(row.value, []));
-    const next = current.filter((storedModelId) => !matchesDeletedModelId(storedModelId, modelId));
-    result.disabledModels += current.length - next.length;
-    if (next.length === current.length) continue;
-    if (next.length === 0) {
-      db.run(`DELETE FROM kv WHERE scope = 'disabledModels' AND key = ?`, [row.key]);
-    } else {
-      db.run(`UPDATE kv SET value = ? WHERE scope = 'disabledModels' AND key = ?`, [stringifyJson(next), row.key]);
     }
   }
 
@@ -337,7 +323,6 @@ export async function deleteModelPermanently(providerAlias, modelId) {
       removedAliases: kv.aliases,
       removedCustomModels: kv.customModels,
       removedPricingEntries: kv.pricing,
-      removedDisabledModels: kv.disabledModels,
       updatedComboIds: combos.updatedComboIds,
       deletedComboIds: combos.deletedComboIds,
       updatedCliToolConfigs,

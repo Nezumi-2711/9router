@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias } from "@/models";
-import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getDeletedModels, isDeletedModelReference } from "@/lib/db";
 import { AI_MODELS } from "@/shared/constants/config";
 import { getProviderAlias } from "@/shared/constants/providers";
@@ -10,14 +9,13 @@ import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 export async function GET() {
   try {
     const modelAliases = await getModelAliases();
-    const [disabled, deleted] = await Promise.all([getDisabledModels(), getDeletedModels()]);
+    const deleted = await getDeletedModels();
 
     const models = AI_MODELS
       .filter((m) => {
         const alias = getProviderAlias(m.provider) || m.provider;
-        const list = disabled[alias] || disabled[m.provider] || [];
         const deletedIds = [...(deleted[alias] || []), ...(deleted[m.provider] || [])];
-        return !list.includes(m.model) && !deletedIds.some((id) => (
+        return !deletedIds.some((id) => (
           m.model === id || (m.model.startsWith(`${id}(`) && m.model.endsWith(")"))
         ));
       })

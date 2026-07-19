@@ -6,9 +6,8 @@ import {
   getProviderNodes,
 } from "@/models";
 import { getUsers } from "@/lib/db";
-import { disableModels, enableModels, getDisabledModels } from "@/lib/disabledModelsDb";
 import { getDeletedModels } from "@/lib/db";
-import { requireAdminUser, requireUsageDashboardUser } from "@/lib/auth/currentUser";
+import { requireUsageDashboardUser } from "@/lib/auth/currentUser";
 import {
   AI_PROVIDERS,
   getProviderAlias,
@@ -73,15 +72,6 @@ function getCompatibleProviderLabel(providerId, node, connection) {
   };
 }
 
-function getModelDisabledState(disabledModels, storageAlias, providerEntry, modelId) {
-  const disabled = new Set([
-    ...(disabledModels[storageAlias] || []),
-    ...(disabledModels[providerEntry.providerId] || []),
-    ...(disabledModels[providerEntry.providerAlias] || []),
-  ]);
-  return disabled.has(modelId);
-}
-
 function isDeletedModelId(deletedModels, storageAlias, providerEntry, modelId) {
   const deleted = new Set([
     ...(deletedModels[storageAlias] || []),
@@ -95,7 +85,6 @@ function isDeletedModelId(deletedModels, storageAlias, providerEntry, modelId) {
 }
 
 function createConnectedModel({
-  disabledModels,
   deletedModels,
   fullModel,
   isCustom,
@@ -115,7 +104,6 @@ function createConnectedModel({
     name: name || modelId,
     fullModel,
     alias: modelAliases.get(fullModel) || modelId,
-    disabled: getModelDisabledState(disabledModels, storageAlias, providerEntry, modelId),
     isCustom,
     caps: {
       vision: caps.vision,
@@ -140,12 +128,11 @@ function getForbiddenResponse(error) {
 // customModels records extend the catalog and can provide administrator names.
 export async function GET() {
   try {
-    const user = await requireUsageDashboardUser();
+    await requireUsageDashboardUser();
 
-    const [connections, customModels, disabledModels, deletedModels, modelAliases, providerNodes, users] = await Promise.all([
+    const [connections, customModels, deletedModels, modelAliases, providerNodes, users] = await Promise.all([
       getProviderConnections(),
       getCustomModels(),
-      getDisabledModels(),
       getDeletedModels(),
       getModelAliases(),
       getProviderNodes(),
@@ -221,7 +208,6 @@ export async function GET() {
       if (seenFullModels.has(fullModel)) return;
       seenFullModels.add(fullModel);
       const connectedModel = createConnectedModel({
-        disabledModels,
         deletedModels,
         fullModel,
         isCustom,
@@ -273,7 +259,6 @@ export async function GET() {
     }
 
     const visibleModels = models
-      .filter((model) => user.role === "admin" || !model.disabled)
       .sort((a, b) => (
         a.provider.name.localeCompare(b.provider.name)
         || a.name.localeCompare(b.name)
@@ -287,40 +272,5 @@ export async function GET() {
 
     console.log("Error fetching connected models:", error);
     return NextResponse.json({ error: "Failed to fetch connected models" }, { status: 500 });
-  }
-}
-
-// PUT /api/models/connected - Enable or disable one or more models for a provider.
-export async function PUT(request) {
-  try {
-    await requireAdminUser();
-
-    const { providerAlias, modelId, modelIds, disabled } = await request.json();
-    const ids = Array.isArray(modelIds)
-      ? modelIds
-      : modelId
-        ? [modelId]
-        : [];
-
-    if (!providerAlias || typeof disabled !== "boolean" || ids.length === 0 || ids.some((id) => typeof id !== "string" || !id)) {
-      return NextResponse.json(
-        { error: "providerAlias, disabled, and modelId or modelIds[] are required" },
-        { status: 400 },
-      );
-    }
-
-    if (disabled) {
-      await disableModels(providerAlias, ids);
-    } else {
-      await enableModels(providerAlias, ids);
-    }
-
-    return NextResponse.json({ success: true, providerAlias, ids, disabled });
-  } catch (error) {
-    const accessError = getForbiddenResponse(error);
-    if (accessError) return accessError;
-
-    console.log("Error updating connected models:", error);
-    return NextResponse.json({ error: "Failed to update connected models" }, { status: 500 });
   }
 }

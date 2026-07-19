@@ -3,16 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
-  Button,
   Card,
   CardSkeleton,
   CapacityBadges,
-  Toggle,
 } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
-import useUserStore from "@/store/userStore";
-import { useNotificationStore } from "@/store/notificationStore";
 
 function groupModelsByProvider(models) {
   return models.reduce((groups, model) => {
@@ -28,17 +24,9 @@ function groupModelsByProvider(models) {
   }, {});
 }
 
-function ProviderModelsCard({ group, canManage, onSetModelDisabled, onSetModelsDisabled, pendingIds }) {
+function ProviderModelsCard({ group }) {
   const [expanded, setExpanded] = useState(true);
   const { copied, copy } = useCopyToClipboard();
-  const isUpdatingGroup = group.models.some((model) => pendingIds.has(model.fullModel));
-  const enabledCount = group.models.filter((model) => !model.disabled).length;
-  const disabledCount = group.models.length - enabledCount;
-
-  const setAllModelsDisabled = (disabled) => {
-    const modelsToUpdate = group.models.filter((model) => model.disabled !== disabled);
-    if (modelsToUpdate.length > 0) onSetModelsDisabled(group.provider.alias, modelsToUpdate, disabled);
-  };
 
   return (
     <Card padding="none" className="overflow-hidden">
@@ -72,38 +60,14 @@ function ProviderModelsCard({ group, canManage, onSetModelDisabled, onSetModelsD
             expand_more
           </span>
         </button>
-        {canManage ? (
-          <div className="flex shrink-0 gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="check_circle"
-              disabled={enabledCount === group.models.length || isUpdatingGroup}
-              onClick={() => setAllModelsDisabled(false)}
-            >
-              Enable all
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="pause_circle"
-              disabled={disabledCount === group.models.length || isUpdatingGroup}
-              onClick={() => setAllModelsDisabled(true)}
-            >
-              Disable all
-            </Button>
-          </div>
-        ) : null}
       </div>
 
       {expanded ? (
         <div className="grid grid-cols-1 gap-3 border-t border-border bg-surface-2/30 p-3 sm:grid-cols-2 xl:grid-cols-3">
-          {group.models.map((model) => {
-            const isPending = pendingIds.has(model.fullModel);
-            return (
+          {group.models.map((model) => (
               <article
                 key={model.fullModel}
-                className={`flex min-w-0 flex-col gap-4 rounded-xl border bg-surface p-4 transition-colors ${model.disabled ? "border-border-subtle opacity-60" : "border-border hover:border-primary/30"}`}
+                className="flex min-w-0 flex-col gap-4 rounded-xl border border-border bg-surface p-4 transition-colors hover:border-primary/30"
               >
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-sm font-semibold text-text-main" title={model.name || model.alias}>
@@ -130,19 +94,9 @@ function ProviderModelsCard({ group, canManage, onSetModelDisabled, onSetModelsD
                     {model.alias !== model.model ? <Badge variant="default" size="sm">{model.alias}</Badge> : null}
                     <CapacityBadges caps={model.caps} />
                   </div>
-                  {canManage ? (
-                    <Toggle
-                      size="sm"
-                      checked={!model.disabled}
-                      disabled={isPending}
-                      onChange={(enabled) => onSetModelDisabled(group.provider.alias, model, !enabled)}
-                      className="shrink-0"
-                    />
-                  ) : null}
                 </div>
               </article>
-            );
-          })}
+          ))}
         </div>
       ) : null}
     </Card>
@@ -150,18 +104,10 @@ function ProviderModelsCard({ group, canManage, onSetModelDisabled, onSetModelsD
 }
 
 export default function ModelsPage() {
-  const user = useUserStore((state) => state.user);
-  const fetchCurrentUser = useUserStore((state) => state.fetchCurrentUser);
-  const notify = useNotificationStore();
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
-  const [pendingIds, setPendingIds] = useState(new Set());
-
-  useEffect(() => {
-    if (!user) fetchCurrentUser();
-  }, [fetchCurrentUser, user]);
 
   useEffect(() => {
     const loadModels = async () => {
@@ -195,43 +141,6 @@ export default function ModelsPage() {
       .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
   }, [models, search]);
 
-  const setModelDisabled = async (providerAlias, model, disabled) => {
-    await setModelsDisabled(providerAlias, [model], disabled);
-  };
-
-  const setModelsDisabled = async (providerAlias, modelsToUpdate, disabled) => {
-    const ids = modelsToUpdate.map((model) => model.fullModel);
-    const modelIds = modelsToUpdate.map((model) => model.model);
-    if (ids.length === 0) return;
-
-    setPendingIds((current) => new Set([...current, ...ids]));
-    setModels((current) => current.map((item) => (
-      ids.includes(item.fullModel) ? { ...item, disabled } : item
-    )));
-
-    try {
-      const response = await fetch("/api/models/connected", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias, modelIds, disabled }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to update model");
-      notify.success(`${modelIds.length} model${modelIds.length === 1 ? "" : "s"} ${disabled ? "disabled" : "enabled"}.`);
-    } catch (updateError) {
-      setModels((current) => current.map((item) => (
-        ids.includes(item.fullModel) ? { ...item, disabled: !disabled } : item
-      )));
-      notify.error(updateError.message);
-    } finally {
-      setPendingIds((current) => {
-        const next = new Set(current);
-        ids.forEach((id) => next.delete(id));
-        return next;
-      });
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -242,7 +151,6 @@ export default function ModelsPage() {
   }
 
   const providerCount = new Set(models.map((model) => model.providerAlias)).size;
-  const canManage = user?.role === "admin";
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
@@ -253,9 +161,7 @@ export default function ModelsPage() {
             <Badge variant="default" size="sm">{models.length}</Badge>
           </div>
           <p className="mt-1 text-sm text-text-muted">
-            {canManage
-              ? "Manage models available from connected providers."
-              : "Browse models currently available through connected providers."}
+            Browse models currently available through connected providers.
           </p>
         </div>
         <label className="relative block w-full sm:w-80">
@@ -306,10 +212,6 @@ export default function ModelsPage() {
             <ProviderModelsCard
               key={group.provider.alias}
               group={group}
-              canManage={canManage}
-              pendingIds={pendingIds}
-              onSetModelDisabled={setModelDisabled}
-              onSetModelsDisabled={setModelsDisabled}
             />
           ))}
         </div>

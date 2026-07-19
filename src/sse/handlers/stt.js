@@ -9,7 +9,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
-import { getDisabledModelResponse } from "../services/disabledModels.js";
+import { getDeletedModelResponse } from "../services/deletedModels.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -46,8 +46,8 @@ export async function handleStt(request) {
 
   const { provider, model } = modelInfo;
 
-  const disabledModelResponse = await getDisabledModelResponse(provider, model);
-  if (disabledModelResponse) return disabledModelResponse;
+  const deletedModelResponse = await getDeletedModelResponse(provider, model);
+  if (deletedModelResponse) return deletedModelResponse;
 
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 

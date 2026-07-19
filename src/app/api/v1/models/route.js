@@ -6,7 +6,6 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { getApiKeyByKey, getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
-import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getDeletedModels } from "@/lib/db";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -256,14 +255,6 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
     console.log("Could not fetch model aliases");
   }
 
-  let disabledByAlias = {};
-  try {
-    disabledByAlias = await getDisabledModels();
-  } catch (e) {
-    console.log("Could not fetch disabled models");
-  }
-  const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && disabledByAlias[alias].includes(modelId);
-
   let deletedByAlias = {};
   try {
     deletedByAlias = await getDeletedModels();
@@ -311,7 +302,7 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
       if (!providerMatchesKinds(providerId, kindFilter)) continue;
       for (const model of providerModels) {
         if (!kindFilter.includes(modelKind(model))) continue;
-        if (isDisabled(alias, model.id) || isDeleted(model.id, alias, providerId)) continue;
+        if (isDeleted(model.id, alias, providerId)) continue;
         models.push({
           id: `${alias}/${model.id}`,
           object: "model",
@@ -467,9 +458,7 @@ export async function buildModelsList(kindFilter, ownerOrOptions = {}) {
         const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;
         if (
-          isDisabled(outputAlias, modelId)
-          || isDisabled(staticAlias, modelId)
-          || isDeleted(modelId, outputAlias, staticAlias, providerId)
+          isDeleted(modelId, outputAlias, staticAlias, providerId)
         ) continue;
 
         const model = {

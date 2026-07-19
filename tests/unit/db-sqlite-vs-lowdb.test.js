@@ -275,15 +275,6 @@ describe("DB SQLite layer — public API parity", () => {
     expect(all.cursor).toEqual({ "gpt-5": "claude-3" });
   });
 
-  it("disabledModels: add/remove per provider", async () => {
-    await sqliteDb.disableModels("openai", ["gpt-3", "gpt-4"]);
-    expect(await sqliteDb.getDisabledByProvider("openai")).toEqual(expect.arrayContaining(["gpt-3", "gpt-4"]));
-    await sqliteDb.enableModels("openai", ["gpt-3"]);
-    expect(await sqliteDb.getDisabledByProvider("openai")).toEqual(["gpt-4"]);
-    await sqliteDb.enableModels("openai", []);
-    expect(await sqliteDb.getDisabledByProvider("openai")).toEqual([]);
-  });
-
   it("usage: saveRequestUsage + getUsageHistory + getUsageStats", async () => {
     await sqliteDb.saveRequestUsage({
       provider: "openai", model: "gpt-4", connectionId: "c1",
@@ -341,6 +332,7 @@ describe("DB SQLite layer — public API parity", () => {
     expect(exported.settings).toBeDefined();
     expect(Array.isArray(exported.providerConnections)).toBe(true);
     expect(typeof exported.modelAliases).toBe("object");
+    expect(exported).not.toHaveProperty("disabledModels");
 
     // Add marker, export, import a different payload, verify reset
     await sqliteDb.setModelAlias("marker", "before");
@@ -351,20 +343,6 @@ describe("DB SQLite layer — public API parity", () => {
 
     await sqliteDb.importDb(snap);
     expect((await sqliteDb.getModelAliases()).marker).toBe("before");
-  });
-
-  it("exportDb / importDb preserves disabled model settings", async () => {
-    await sqliteDb.disableModels("backup-provider", ["backup-model"]);
-    const snapshot = await sqliteDb.exportDb();
-
-    expect(snapshot.disabledModels).toMatchObject({
-      "backup-provider": ["backup-model"],
-    });
-
-    await sqliteDb.enableModels("backup-provider", []);
-    await sqliteDb.importDb(snapshot);
-
-    expect(await sqliteDb.getDisabledByProvider("backup-provider")).toEqual(["backup-model"]);
   });
 
   it("pricing: user pricing merged with constants", async () => {

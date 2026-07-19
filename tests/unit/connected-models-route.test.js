@@ -6,7 +6,6 @@ const getCustomModels = vi.fn();
 const getProviderNodes = vi.fn();
 const getUsers = vi.fn();
 const getDeletedModels = vi.fn();
-const getDisabledModels = vi.fn();
 const requireUsageDashboardUser = vi.fn();
 const getCapabilitiesForModel = vi.fn();
 
@@ -19,7 +18,6 @@ vi.mock("@/models", () => ({
 
 vi.mock("@/lib/db", () => ({ getUsers, getDeletedModels }));
 
-vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels }));
 vi.mock("@/lib/auth/currentUser", () => ({
   requireUsageDashboardUser,
 }));
@@ -27,7 +25,7 @@ vi.mock("open-sse/config/providerModels.js", () => ({
   getModelsByProviderId: (providerId) => ({
     alpha: [
       { id: "enabled", name: "Enabled model" },
-      { id: "disabled", name: "Disabled model" },
+      { id: "alternative", name: "Alternative model" },
     ],
     beta: [{ id: "inactive", name: "Inactive provider model" }],
     "orbit-provider": [
@@ -63,16 +61,14 @@ describe("GET /api/models/connected", () => {
     getProviderNodes.mockReset();
     getUsers.mockReset();
     getDeletedModels.mockReset();
-    getDisabledModels.mockReset();
     requireUsageDashboardUser.mockReset();
     getCapabilitiesForModel.mockReset();
 
     getModelAliases.mockResolvedValue({ "preferred-alpha": "alpha-alias/enabled" });
-    getDisabledModels.mockResolvedValue({ "alpha-alias": ["disabled"] });
     getDeletedModels.mockResolvedValue({});
     getCustomModels.mockResolvedValue([
       { providerAlias: "alpha-alias", id: "enabled", name: "Enabled model", type: "llm" },
-      { providerAlias: "alpha-alias", id: "disabled", name: "Disabled model", type: "llm" },
+      { providerAlias: "alpha-alias", id: "alternative", name: "Alternative model", type: "llm" },
       { providerAlias: "alpha-alias", id: "embedding", name: "Embedding model", type: "embedding" },
       { providerAlias: "beta-alias", id: "inactive", name: "Inactive provider model", type: "llm" },
     ]);
@@ -85,7 +81,7 @@ describe("GET /api/models/connected", () => {
     ]);
   });
 
-  it("returns added models for a connected provider to an administrator, including disabled rows", async () => {
+  it("returns added models for a connected provider", async () => {
     requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
 
     const response = await GET();
@@ -94,14 +90,12 @@ describe("GET /api/models/connected", () => {
     expect(response.status).toBe(200);
     expect(body.models).toEqual([
       expect.objectContaining({
-        fullModel: "alpha-alias/disabled",
+        fullModel: "alpha-alias/alternative",
         providerAlias: "alpha-alias",
-        disabled: true,
       }),
       expect.objectContaining({
         fullModel: "alpha-alias/enabled",
         alias: "preferred-alpha",
-        disabled: false,
         caps: { vision: false, search: true, reasoning: true },
       }),
     ]);
@@ -126,8 +120,7 @@ describe("GET /api/models/connected", () => {
         isCustom: false,
       }),
       expect.objectContaining({
-        fullModel: "alpha-alias/disabled",
-        disabled: true,
+        fullModel: "alpha-alias/alternative",
         isCustom: false,
       }),
     ]));
@@ -171,16 +164,17 @@ describe("GET /api/models/connected", () => {
     expect(body.models.filter((model) => model.fullModel === "orbit/claude-opus-4-8")).toHaveLength(1);
   });
 
-  it("excludes disabled models for non-administrators", async () => {
+  it("returns the same catalog to non-administrators", async () => {
     requireUsageDashboardUser.mockResolvedValue({ id: "member", role: "user" });
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.models).toEqual([
-      expect.objectContaining({ fullModel: "alpha-alias/enabled", disabled: false }),
-    ]);
+    expect(body.models).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fullModel: "alpha-alias/enabled" }),
+      expect.objectContaining({ fullModel: "alpha-alias/alternative" }),
+    ]));
   });
 
   it("includes administrator-managed compatible-provider models for non-administrators", async () => {
@@ -224,39 +218,16 @@ describe("GET /api/models/connected", () => {
     ]));
   });
 
-  it("does not expose disabled compatible-provider models to non-administrators", async () => {
-    const providerId = "anthropic-compatible-test-node";
-    requireUsageDashboardUser.mockResolvedValue({ id: "member", role: "user" });
-    getProviderConnections.mockResolvedValue([
-      { provider: providerId, isActive: true, apiKey: "admin-secret", ownerId: "admin" },
-    ]);
-    getProviderNodes.mockResolvedValue([
-      { id: providerId, type: "anthropic-compatible", name: "Company Anthropic" },
-    ]);
-    getCustomModels.mockResolvedValue([
-      { providerAlias: providerId, id: "claude-company", type: "llm" },
-    ]);
-    getDisabledModels.mockResolvedValue({ [providerId]: ["claude-company"] });
-
-    const response = await GET();
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.models).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ fullModel: `${providerId}/claude-company` }),
-    ]));
-  });
-
   it("does not expose permanently deleted models to administrators", async () => {
     requireUsageDashboardUser.mockResolvedValue({ id: "admin", role: "admin" });
-    getDeletedModels.mockResolvedValue({ "alpha-alias": ["disabled", "enabled"] });
+    getDeletedModels.mockResolvedValue({ "alpha-alias": ["alternative", "enabled"] });
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.models).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ fullModel: "alpha-alias/disabled" }),
+      expect.objectContaining({ fullModel: "alpha-alias/alternative" }),
       expect.objectContaining({ fullModel: "alpha-alias/enabled" }),
     ]));
   });

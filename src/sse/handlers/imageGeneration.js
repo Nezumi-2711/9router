@@ -14,7 +14,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
-import { getDisabledModelResponse } from "../services/disabledModels.js";
+import { getDeletedModelResponse } from "../services/deletedModels.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -78,8 +78,8 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
 
   const { provider, model } = modelInfo;
 
-  const disabledModelResponse = await getDisabledModelResponse(provider, model);
-  if (disabledModelResponse) return disabledModelResponse;
+  const deletedModelResponse = await getDeletedModelResponse(provider, model);
+  if (deletedModelResponse) return deletedModelResponse;
 
   // noAuth providers — no credential needed
   if (NO_AUTH_PROVIDERS.has(provider)) {

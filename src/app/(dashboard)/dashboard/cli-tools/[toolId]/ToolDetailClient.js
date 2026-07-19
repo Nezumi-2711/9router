@@ -45,7 +45,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
         }
         if (modelsRes.ok) {
           const data = await modelsRes.json();
-          setAvailableModels((data.models || []).filter((model) => !model.disabled));
+          setAvailableModels(data.models || []);
         }
         if (configRes.ok) {
           const data = await configRes.json();

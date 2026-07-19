@@ -2,7 +2,7 @@ import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
 import ActionMenu from "@/shared/components/ActionMenu";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onRemove, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onRemove, onTest, isTesting, onDeleteModel, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -15,7 +15,7 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
     : testStatus === "error"
     ? "#ef4444"
     : undefined;
-  const deleteModel = onRemove || (isCustom ? onDeleteAlias : onDisable);
+  const deleteModel = onRemove || (isCustom ? onDeleteAlias : onDeleteModel);
   const deletesPermanently = !!deleteModel;
   const actionItems = [
     ...(onTest ? [{
@@ -81,7 +81,7 @@ ModelRow.propTypes = {
   onRemove: PropTypes.func,
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
-  onDisable: PropTypes.func,
+  onDeleteModel: PropTypes.func,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
 };

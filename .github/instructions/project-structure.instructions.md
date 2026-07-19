@@ -59,7 +59,6 @@ applyTo: '**/*'
 │   │   │   └── helpers/          # JSON column helpers, backups
 │   │   ├── localDb.js            # Backward-compat shim → re-exports @/lib/db/index.js
 │   │   ├── usageDb.js            # Usage + log persistence (~/.9router/usage.json, log.txt)
-│   │   ├── disabledModelsDb.js   # Disabled models DB
 │   │   ├── requestDetailsDb.js   # Request detail logging DB
 │   │   ├── oauth/                # OAuth flow helpers
 │   │   ├── headroom/             # Headroom token compression

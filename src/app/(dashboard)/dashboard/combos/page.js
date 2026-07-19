@@ -54,10 +54,8 @@ export default function CombosPage() {
     }
   }
 
-  // The Models page is the source of truth for eligible models. Administrators
-  // can still see disabled rows there to manage them, but disabled models must
-  // not be added to new or edited combos because they cannot serve requests.
-  const selectableModels = connectedModels.filter((model) => !model.disabled);
+  // The Models page is the source of truth for eligible models.
+  const selectableModels = connectedModels;
 
   const handleCreate = async (data) => {
     try {

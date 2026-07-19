@@ -48,7 +48,6 @@ export default function ModelSelectModal({
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
-  const [disabledModels, setDisabledModels] = useState({});
   const [deletedModels, setDeletedModels] = useState({});
 
   const fetchCombos = async () => {
@@ -102,28 +101,20 @@ export default function ModelSelectModal({
     if (isOpen) fetchCustomModels();
   }, [isOpen]);
 
-  const fetchDisabledModels = async () => {
+  const fetchDeletedModels = async () => {
     try {
-      const [disabledRes, deletedRes] = await Promise.all([
-        fetch("/api/models/disabled"),
-        fetch("/api/models/delete"),
-      ]);
-      if (!disabledRes.ok) throw new Error(`Failed to fetch disabled models: ${disabledRes.status}`);
-      const [disabledData, deletedData] = await Promise.all([
-        disabledRes.json(),
-        deletedRes.ok ? deletedRes.json() : Promise.resolve({ deleted: {} }),
-      ]);
-      setDisabledModels(disabledData.disabled || {});
+      const deletedRes = await fetch("/api/models/delete");
+      if (!deletedRes.ok) throw new Error(`Failed to fetch deleted models: ${deletedRes.status}`);
+      const deletedData = await deletedRes.json();
       setDeletedModels(deletedData.deleted || {});
     } catch (error) {
-      console.error("Error fetching disabled models:", error);
-      setDisabledModels({});
+      console.error("Error fetching deleted models:", error);
       setDeletedModels({});
     }
   };
 
   useEffect(() => {
-    if (isOpen) fetchDisabledModels();
+    if (isOpen) fetchDeletedModels();
   }, [isOpen]);
 
   const allProviders = useMemo(() => ({ ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS }), []);
@@ -379,21 +370,15 @@ export default function ModelSelectModal({
       }
     });
 
-    // Filter out disabled models per provider (disabled keyed by storage alias OR providerId)
+    // Filter out permanently deleted models per provider (keyed by storage alias OR provider ID).
     Object.entries(groups).forEach(([providerId, group]) => {
       const aliasKey = getProviderAlias(providerId);
-      const disabledIds = new Set([
-        ...(disabledModels[aliasKey] || []),
-        ...(disabledModels[providerId] || []),
-      ]);
       const deletedIds = new Set([
         ...(deletedModels[aliasKey] || []),
         ...(deletedModels[providerId] || []),
       ]);
-      if (disabledIds.size === 0 && deletedIds.size === 0) return;
-      group.models = group.models.filter((model) => !disabledIds.has(model.id) && ![
-        ...deletedIds,
-      ].some((deletedModelId) => (
+      if (deletedIds.size === 0) return;
+      group.models = group.models.filter((model) => ![...deletedIds].some((deletedModelId) => (
         model.id === deletedModelId
         || (model.id.startsWith(`${deletedModelId}(`) && model.id.endsWith(")"))
       )));
@@ -401,7 +386,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [availableModels, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, deletedModels, kindFilter, activeProviders]);
+  }, [availableModels, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, deletedModels, kindFilter, activeProviders]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

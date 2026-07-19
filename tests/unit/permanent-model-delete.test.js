@@ -42,7 +42,6 @@ describe("permanent model deletion", () => {
     await db.setModelAlias("keep-alias", `${providerPrefix}/gpt-keep`);
     await db.addCustomModel({ providerAlias: providerPrefix, id: modelId, type: "llm" });
     await db.addCustomModel({ providerAlias: providerPrefix, id: "gpt-keep", type: "llm" });
-    await db.disableModels(providerPrefix, [modelId]);
     await db.updatePricing({
       [providerPrefix]: {
         [modelId]: { prompt: 1, completion: 2 },
@@ -131,7 +130,6 @@ describe("permanent model deletion", () => {
       removedAliases: 1,
       removedCustomModels: 1,
       removedPricingEntries: 1,
-      removedDisabledModels: 1,
       removedRequestDetails: 1,
       updatedCliToolConfigs: 2,
       updatedComboIds: [mixedCombo.id],
@@ -146,7 +144,6 @@ describe("permanent model deletion", () => {
     expect(await db.getCustomModels()).toEqual([
       expect.objectContaining({ providerAlias: providerPrefix, id: "gpt-keep" }),
     ]);
-    expect(await db.getDisabledByProvider(providerPrefix)).toEqual([]);
     expect((await db.getPricing())[providerPrefix]).toEqual({
       "gpt-keep": { prompt: 3, completion: 4 },
     });
