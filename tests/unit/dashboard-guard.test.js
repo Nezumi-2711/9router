@@ -292,6 +292,25 @@ describe("dashboard guard CLI Tools access", () => {
     expect(response.body.error).toBe("CLI Tools are available only from the local machine");
   });
 
+  it("allows authenticated remote users to access CLI tool configuration", async () => {
+    const response = await proxy(request("/api/cli-tools/config/claude", {
+      host: "router.example.com",
+    }, "user-token"));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
+  it("rejects unauthenticated remote CLI tool configuration access", async () => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+
+    const response = await proxy(request("/api/cli-tools/config/claude", {
+      host: "router.example.com",
+    }));
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Unauthorized");
+  });
+
   it("allows a local administrator to use CLI Tools", async () => {
     mocks.getUserById.mockResolvedValue({ id: "user-1", isActive: true, role: "admin" });
 

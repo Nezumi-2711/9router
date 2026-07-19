@@ -205,8 +205,11 @@ export async function proxy(request) {
   // case, can change privileged system networking. Keep them available only
   // to authenticated dashboard users on the local machine; never allow the
   // shared CLI bearer token to become a remote host-administration credential.
+  // Configuration routes only persist dashboard-user settings in SQLite, so
+  // authenticated remote dashboard users may access them.
   if (pathname === "/api/cli-tools" || pathname.startsWith("/api/cli-tools/")) {
-    if (!isLocalRequest(request)) {
+    const isConfigRoute = pathname.startsWith("/api/cli-tools/config/");
+    if (!isLocalRequest(request) && !isConfigRoute) {
       return NextResponse.json({ error: "CLI Tools are available only from the local machine" }, { status: 403 });
     }
     if (!(await isAuthenticated(request))) {
