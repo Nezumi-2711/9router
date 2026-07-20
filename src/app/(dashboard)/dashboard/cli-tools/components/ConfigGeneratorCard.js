@@ -67,7 +67,20 @@ const getDuplicateModelClass = ({ total, occurrence }) => (
   total > 1 ? DUPLICATE_MODEL_COLORS[(occurrence - 1) % DUPLICATE_MODEL_COLORS.length] : "border-border bg-bg-secondary"
 );
 
-function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "", opencodeModels = [], opencodeDefaultModel = "", coworkThinking = {}, copilotTokens = {}, copilotThinking = {}, connectedModels = [] }) {
+const createCoworkModelSettings = (models, savedSettings = [], legacyThinking = {}) => (
+  models.map((model, index) => ({
+    thinking: savedSettings[index]?.thinking || legacyThinking[model] || "",
+  }))
+);
+
+const createCopilotModelSettings = (models, savedSettings = [], legacyThinking = {}, legacyTokens = {}) => (
+  models.map((model, index) => ({
+    thinking: savedSettings[index]?.thinking || legacyThinking[model] || "",
+    tokens: savedSettings[index]?.tokens || legacyTokens[model] || DEFAULT_MODEL_TOKEN_LIMITS,
+  }))
+);
+
+function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, claudeThinking = {}, codexModel = "", codexThinking = "", opencodeModels = [], opencodeDefaultModel = "", coworkModelSettings = [], copilotModelSettings = [], connectedModels = [] }) {
   const endpoint = normalizeV1(baseUrl);
   const selectedModels = models.length ? models : [DEFAULT_MODEL];
   const model = selectedModels[0];
@@ -123,7 +136,7 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
     case "copilot":
       return [{
         filename: "chatLanguageModels.json",
-        content: toJson(Object.values(selectedModels.reduce((groups, id) => {
+        content: toJson(Object.values(selectedModels.reduce((groups, id, index) => {
           const connectedModel = connectedModels.find((item) => item.fullModel === id);
           const providerId = connectedModel?.providerAlias || id.split("/")[0] || "9router";
           const providerName = connectedModel?.provider?.name || formatModelName(providerId);
@@ -136,8 +149,9 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
             apiKey: COPILOT_API_KEY_INPUT,
             models: [],
           };
-          const tokens = copilotTokens[id] || {};
-          const modelId = withThinkingLevel(id, copilotThinking[id]);
+          const modelSettings = copilotModelSettings[index] || {};
+          const tokens = modelSettings.tokens || {};
+          const modelId = withThinkingLevel(id, modelSettings.thinking);
           const entry = {
             id: modelId,
             name: formatModelName(modelId),
@@ -146,7 +160,7 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
             vision: true,
             streaming: true,
           };
-          if (copilotThinking[id]) {
+          if (modelSettings.thinking) {
             entry.thinking = true;
             entry.reasoningEffortFormat = "chat-completions";
           }
@@ -168,8 +182,8 @@ function buildConfigs(toolId, { baseUrl, apiKey, models, claudeModels = {}, clau
           inferenceProvider: "gateway",
           inferenceGatewayBaseUrl: endpoint,
           inferenceGatewayApiKey: apiKey,
-          inferenceModels: selectedModels.map((name) => ({
-            name: withThinkingLevel(name, coworkThinking[name]),
+          inferenceModels: selectedModels.map((name, index) => ({
+            name: withThinkingLevel(name, coworkModelSettings[index]?.thinking),
           })),
         }),
       }];
@@ -211,9 +225,17 @@ export default function ConfigGeneratorCard({
   const [codexThinking, setCodexThinking] = useState(() => initialConfig?.codexThinking || "");
   const [opencodeModels, setOpencodeModels] = useState(() => initialConfig?.opencodeModels || []);
   const [opencodeDefaultModel, setOpencodeDefaultModel] = useState(() => initialConfig?.opencodeDefaultModel || "");
-  const [coworkThinking, setCoworkThinking] = useState(() => initialConfig?.coworkThinking || {});
-  const [copilotTokens, setCopilotTokens] = useState(() => initialConfig?.copilotTokens || {});
-  const [copilotThinking, setCopilotThinking] = useState(() => initialConfig?.copilotThinking || {});
+  const [coworkModelSettings, setCoworkModelSettings] = useState(() => createCoworkModelSettings(
+    initialConfig?.selectedModels || [],
+    initialConfig?.coworkModelSettings,
+    initialConfig?.coworkThinking,
+  ));
+  const [copilotModelSettings, setCopilotModelSettings] = useState(() => createCopilotModelSettings(
+    initialConfig?.selectedModels || [],
+    initialConfig?.copilotModelSettings,
+    initialConfig?.copilotThinking,
+    initialConfig?.copilotTokens,
+  ));
   const connectedModels = availableModels;
   const [customBaseUrl, setCustomBaseUrl] = useState(() => resolveInitialCliToolBaseUrl(initialConfig?.baseUrl, baseUrl));
   const [modelModalOpen, setModelModalOpen] = useState(false);
@@ -227,8 +249,8 @@ export default function ConfigGeneratorCard({
     ? COPILOT_API_KEY_INPUT
     : selectedApiKey.trim() || (cloudEnabled ? "<API_KEY_FROM_DASHBOARD>" : "sk_9router");
   const configs = useMemo(
-    () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking, connectedModels: connectedModels || [] }),
-    [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking, connectedModels]
+    () => buildConfigs(toolId, { baseUrl: effectiveBaseUrl, apiKey, models: selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkModelSettings, copilotModelSettings, connectedModels: connectedModels || [] }),
+    [toolId, effectiveBaseUrl, apiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkModelSettings, copilotModelSettings, connectedModels]
   );
 
   const buildPersistableConfig = () => {
@@ -242,8 +264,8 @@ export default function ConfigGeneratorCard({
     if (toolId === "claude") Object.assign(config, { claudeModels, claudeThinking });
     if (toolId === "codex") Object.assign(config, { codexModel, codexThinking });
     if (toolId === "opencode") Object.assign(config, { opencodeModels, opencodeDefaultModel });
-    if (toolId === "cowork") Object.assign(config, { selectedModels, coworkThinking });
-    if (toolId === "copilot") Object.assign(config, { selectedModels, copilotThinking, copilotTokens });
+    if (toolId === "cowork") Object.assign(config, { selectedModels, coworkModelSettings });
+    if (toolId === "copilot") Object.assign(config, { selectedModels, copilotModelSettings });
     return config;
   };
 
@@ -266,7 +288,7 @@ export default function ConfigGeneratorCard({
     }
     setSaveStatus((current) => current === "saving" ? current : "dirty");
     setSaveError("");
-  }, [effectiveBaseUrl, apiKeyMode, selectedApiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkThinking, copilotTokens, copilotThinking]);
+  }, [effectiveBaseUrl, apiKeyMode, selectedApiKey, selectedModels, claudeModels, claudeThinking, codexModel, codexThinking, opencodeModels, opencodeDefaultModel, coworkModelSettings, copilotModelSettings]);
 
   const getThinkingLevelsForModel = (fullModel) => {
     const connectedModel = connectedModels?.find((model) => model.fullModel === fullModel);
@@ -274,7 +296,7 @@ export default function ConfigGeneratorCard({
     return getThinkingLevels(connectedModel.provider.id, connectedModel.model);
   };
 
-  const loadCopilotTokenLimits = async (modelIds) => {
+  const loadCopilotTokenLimits = async (modelIds, modelsForSettings = selectedModels) => {
     try {
       const response = await fetch("/api/models/token-limits", {
         method: "POST",
@@ -284,14 +306,16 @@ export default function ConfigGeneratorCard({
       if (!response.ok) throw new Error("Failed to load models.dev token limits");
 
       const { limits = {} } = await response.json();
-      setCopilotTokens((current) => Object.entries(limits).reduce((next, [model, limit]) => {
-        const currentLimit = current[model];
+      setCopilotModelSettings((current) => current.map((settings, index) => {
+        const model = modelsForSettings[index];
+        const limit = limits[model];
+        if (!limit) return settings;
+        const currentLimit = settings.tokens;
         const hasUserOverride = currentLimit
           && (currentLimit.maxInputTokens !== DEFAULT_MODEL_TOKEN_LIMITS.maxInputTokens
             || currentLimit.maxOutputTokens !== DEFAULT_MODEL_TOKEN_LIMITS.maxOutputTokens);
-        next[model] = hasUserOverride ? currentLimit : limit;
-        return next;
-      }, { ...current }));
+        return { ...settings, tokens: hasUserOverride ? currentLimit : limit };
+      }));
     } catch (error) {
       console.log("Error loading models.dev token limits:", error);
     }
@@ -299,42 +323,23 @@ export default function ConfigGeneratorCard({
 
   const addModel = (selected) => {
     if (!selected?.value) return;
-    setSelectedModels((current) => [...current, selected.value]);
-    if (toolId === "cowork") setCoworkThinking((current) => ({ ...current, [selected.value]: "" }));
+    const nextModels = [...selectedModels, selected.value];
+    setSelectedModels(nextModels);
+    if (toolId === "cowork") setCoworkModelSettings((current) => [...current, { thinking: "" }]);
     if (toolId === "copilot") {
-      setCopilotThinking((current) => ({ ...current, [selected.value]: "" }));
-      setCopilotTokens((current) => ({ ...current, [selected.value]: DEFAULT_MODEL_TOKEN_LIMITS }));
-      loadCopilotTokenLimits([selected.value]);
+      setCopilotModelSettings((current) => [...current, { thinking: "", tokens: DEFAULT_MODEL_TOKEN_LIMITS }]);
+      loadCopilotTokenLimits([selected.value], nextModels);
     }
   };
 
-  const removeCoworkModel = (model, index) => {
-    const remainingModels = selectedModels.filter((_, currentIndex) => currentIndex !== index);
-    setSelectedModels(remainingModels);
-    if (!remainingModels.includes(model)) {
-      setCoworkThinking((current) => {
-        const remainingThinking = { ...current };
-        delete remainingThinking[model];
-        return remainingThinking;
-      });
-    }
+  const removeCoworkModel = (index) => {
+    setSelectedModels((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setCoworkModelSettings((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
-  const removeCopilotModel = (model, index) => {
-    const remainingModels = selectedModels.filter((_, currentIndex) => currentIndex !== index);
-    setSelectedModels(remainingModels);
-    if (!remainingModels.includes(model)) {
-      setCopilotThinking((current) => {
-        const remaining = { ...current };
-        delete remaining[model];
-        return remaining;
-      });
-      setCopilotTokens((current) => {
-        const remaining = { ...current };
-        delete remaining[model];
-        return remaining;
-      });
-    }
+  const removeCopilotModel = (index) => {
+    setSelectedModels((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setCopilotModelSettings((current) => current.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const selectClaudeModel = (selected) => {
@@ -530,8 +535,10 @@ export default function ConfigGeneratorCard({
                         <label className="flex items-center gap-2 text-xs font-medium text-text-muted">
                           Reasoning / thinking
                           <select
-                            value={coworkThinking[model] || ""}
-                            onChange={(event) => setCoworkThinking((current) => ({ ...current, [model]: event.target.value }))}
+                            value={coworkModelSettings[index]?.thinking || ""}
+                            onChange={(event) => setCoworkModelSettings((current) => current.map((settings, currentIndex) => (
+                              currentIndex === index ? { ...settings, thinking: event.target.value } : settings
+                            )))}
                             className="min-w-28 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
                           >
                             <option value="">Default</option>
@@ -539,7 +546,7 @@ export default function ConfigGeneratorCard({
                           </select>
                         </label>
                       )}
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeCoworkModel(model, index)} aria-label={`Remove ${model} instance ${index + 1}`}>Remove</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeCoworkModel(index)} aria-label={`Remove ${model} instance ${index + 1}`}>Remove</Button>
                     </div>
                   );
                 })}
@@ -560,7 +567,8 @@ export default function ConfigGeneratorCard({
               <div className="flex flex-col gap-2">
                 {selectedModels.map((model, index) => {
                   const thinkingLevels = getThinkingLevelsForModel(model);
-                  const tokens = copilotTokens[model] || DEFAULT_MODEL_TOKEN_LIMITS;
+                  const modelSettings = copilotModelSettings[index] || {};
+                  const tokens = modelSettings.tokens || DEFAULT_MODEL_TOKEN_LIMITS;
                   const inputOptions = getInputTokenOptions(tokens);
                   const outputOptions = getOutputTokenOptions(tokens);
                   const occurrence = getModelOccurrence(selectedModels, model, index);
@@ -568,14 +576,16 @@ export default function ConfigGeneratorCard({
                     <div key={`${model}-${index}`} className={`flex flex-col gap-2 rounded-lg border px-3 py-2 ${getDuplicateModelClass(occurrence)}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="min-w-0 flex-1 break-all text-xs font-medium text-text-main">{model}{occurrence.total > 1 && <span className="ml-1 text-[10px] font-bold opacity-70">#{occurrence.occurrence}</span>}</span>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeCopilotModel(model, index)} aria-label={`Remove ${model} instance ${index + 1}`}>Remove</Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeCopilotModel(index)} aria-label={`Remove ${model} instance ${index + 1}`}>Remove</Button>
                       </div>
                       {thinkingLevels && (
                         <label className="flex items-center gap-2 text-xs font-medium text-text-muted">
                           Reasoning / thinking
                           <select
-                            value={copilotThinking[model] || ""}
-                            onChange={(event) => setCopilotThinking((current) => ({ ...current, [model]: event.target.value }))}
+                            value={modelSettings.thinking || ""}
+                            onChange={(event) => setCopilotModelSettings((current) => current.map((settings, currentIndex) => (
+                              currentIndex === index ? { ...settings, thinking: event.target.value } : settings
+                            )))}
                             className="min-w-28 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
                           >
                             <option value="">Default</option>
@@ -588,10 +598,11 @@ export default function ConfigGeneratorCard({
                           maxInputTokens
                           <select
                             value={tokens.maxInputTokens || ""}
-                            onChange={(event) => setCopilotTokens((current) => ({
-                              ...current,
-                              [model]: { ...current[model], maxInputTokens: event.target.value ? Number(event.target.value) : undefined },
-                            }))}
+                            onChange={(event) => setCopilotModelSettings((current) => current.map((settings, currentIndex) => (
+                              currentIndex === index
+                                ? { ...settings, tokens: { ...settings.tokens, maxInputTokens: event.target.value ? Number(event.target.value) : undefined } }
+                                : settings
+                            )))}
                             className="min-w-20 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
                           >
                             {inputOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -601,10 +612,11 @@ export default function ConfigGeneratorCard({
                           maxOutputTokens
                           <select
                             value={tokens.maxOutputTokens || ""}
-                            onChange={(event) => setCopilotTokens((current) => ({
-                              ...current,
-                              [model]: { ...current[model], maxOutputTokens: event.target.value ? Number(event.target.value) : undefined },
-                            }))}
+                            onChange={(event) => setCopilotModelSettings((current) => current.map((settings, currentIndex) => (
+                              currentIndex === index
+                                ? { ...settings, tokens: { ...settings.tokens, maxOutputTokens: event.target.value ? Number(event.target.value) : undefined } }
+                                : settings
+                            )))}
                             className="min-w-20 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-main outline-none focus:border-primary"
                           >
                             {outputOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}

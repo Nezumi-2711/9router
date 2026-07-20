@@ -161,7 +161,7 @@ describe("permanent model deletion", () => {
     });
     expect((await db.getCliToolConfig(cliUser.id, "cowork")).config).toMatchObject({
       selectedModels: [`${providerPrefix}/gpt-keep`],
-      coworkThinking: { [`${providerPrefix}/gpt-keep`]: "low" },
+      coworkModelSettings: [{ thinking: "low" }],
     });
 
     const history = await db.getUsageHistory({});

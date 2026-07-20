@@ -89,6 +89,22 @@ function normalizeThinkingMap(value, allowedKeys, field) {
   return normalized;
 }
 
+function normalizeTokenLimits(value, field) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new CliToolConfigValidationError(`${field} must be an object`);
+  }
+  const normalized = {};
+  for (const tokenField of ["maxInputTokens", "maxOutputTokens"]) {
+    if (value[tokenField] === undefined || value[tokenField] === null || value[tokenField] === "") continue;
+    const number = Number(value[tokenField]);
+    if (!Number.isSafeInteger(number) || number <= 0 || number > MAX_TOKEN_LIMIT) {
+      throw new CliToolConfigValidationError(`${tokenField} must be a positive integer no greater than ${MAX_TOKEN_LIMIT}`);
+    }
+    normalized[tokenField] = number;
+  }
+  return normalized;
+}
+
 function normalizeApiKeyReference(input) {
   const mode = input.apiKeyMode === undefined ? "managed" : input.apiKeyMode;
   if (!['managed', 'custom'].includes(mode)) {
@@ -98,30 +114,43 @@ function normalizeApiKeyReference(input) {
   return { apiKeyMode: mode, apiKeyId: mode === "managed" ? apiKeyId : null };
 }
 
-function normalizeTokenMap(value, selectedModels) {
-  if (value === undefined) return {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function normalizeCoworkModelSettings(value, selectedModels, legacyThinking) {
+  if (value !== undefined && !Array.isArray(value)) {
+    throw new CliToolConfigValidationError("coworkModelSettings must be an array");
+  }
+  const legacySettings = normalizeThinkingMap(legacyThinking, selectedModels, "coworkThinking");
+  return selectedModels.map((model, index) => {
+    const setting = value?.[index];
+    if (setting !== undefined && (!setting || typeof setting !== "object" || Array.isArray(setting))) {
+      throw new CliToolConfigValidationError(`coworkModelSettings.${index} must be an object`);
+    }
+    const thinking = normalizeThinking(setting?.thinking ?? legacySettings[model], `coworkModelSettings.${index}.thinking`);
+    return thinking ? { thinking } : {};
+  });
+}
+
+function normalizeCopilotModelSettings(value, selectedModels, legacyThinking, legacyTokens) {
+  if (value !== undefined && !Array.isArray(value)) {
+    throw new CliToolConfigValidationError("copilotModelSettings must be an array");
+  }
+  const legacyThinkingSettings = normalizeThinkingMap(legacyThinking, selectedModels, "copilotThinking");
+  const legacyTokenSettings = legacyTokens === undefined ? {} : legacyTokens;
+  if (!legacyTokenSettings || typeof legacyTokenSettings !== "object" || Array.isArray(legacyTokenSettings)) {
     throw new CliToolConfigValidationError("copilotTokens must be an object");
   }
-  const normalized = {};
-  for (const model of selectedModels) {
-    const limits = value[model];
-    if (limits === undefined) continue;
-    if (!limits || typeof limits !== "object" || Array.isArray(limits)) {
-      throw new CliToolConfigValidationError(`copilotTokens.${model} must be an object`);
+  return selectedModels.map((model, index) => {
+    const setting = value?.[index];
+    if (setting !== undefined && (!setting || typeof setting !== "object" || Array.isArray(setting))) {
+      throw new CliToolConfigValidationError(`copilotModelSettings.${index} must be an object`);
     }
-    const next = {};
-    for (const field of ["maxInputTokens", "maxOutputTokens"]) {
-      if (limits[field] === undefined || limits[field] === null || limits[field] === "") continue;
-      const number = Number(limits[field]);
-      if (!Number.isSafeInteger(number) || number <= 0 || number > MAX_TOKEN_LIMIT) {
-        throw new CliToolConfigValidationError(`${field} must be a positive integer no greater than ${MAX_TOKEN_LIMIT}`);
-      }
-      next[field] = number;
-    }
-    if (Object.keys(next).length) normalized[model] = next;
-  }
-  return normalized;
+    const thinking = normalizeThinking(setting?.thinking ?? legacyThinkingSettings[model], `copilotModelSettings.${index}.thinking`);
+    const tokensSource = setting?.tokens ?? legacyTokenSettings[model];
+    const tokens = tokensSource === undefined ? {} : normalizeTokenLimits(tokensSource, `copilotModelSettings.${index}.tokens`);
+    return {
+      ...(thinking ? { thinking } : {}),
+      ...(Object.keys(tokens).length ? { tokens } : {}),
+    };
+  });
 }
 
 export function normalizeCliToolConfig(toolId, input) {
@@ -155,13 +184,12 @@ export function normalizeCliToolConfig(toolId, input) {
       : (config.opencodeModels[0] || "");
   } else if (toolId === "cowork") {
     config.selectedModels = normalizeModels(input.selectedModels);
-    config.coworkThinking = normalizeThinkingMap(input.coworkThinking, config.selectedModels, "coworkThinking");
+    config.coworkModelSettings = normalizeCoworkModelSettings(input.coworkModelSettings, config.selectedModels, input.coworkThinking);
   } else if (toolId === "cursor") {
     config.selectedModels = normalizeModels(input.selectedModels);
   } else if (toolId === "copilot") {
     config.selectedModels = normalizeModels(input.selectedModels);
-    config.copilotThinking = normalizeThinkingMap(input.copilotThinking, config.selectedModels, "copilotThinking");
-    config.copilotTokens = normalizeTokenMap(input.copilotTokens, config.selectedModels);
+    config.copilotModelSettings = normalizeCopilotModelSettings(input.copilotModelSettings, config.selectedModels, input.copilotThinking, input.copilotTokens);
   }
 
   return config;

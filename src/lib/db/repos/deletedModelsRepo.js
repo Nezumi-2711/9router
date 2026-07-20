@@ -188,9 +188,14 @@ function cleanCliToolConfigsSync(db, providerAliases, modelId) {
 
     for (const field of ["opencodeModels", "selectedModels"]) {
       if (!Array.isArray(config[field])) continue;
-      const removedModels = config[field].filter(deleted);
-      if (removedModels.length === 0) continue;
-      config[field] = config[field].filter((reference) => !deleted(reference));
+      const removedIndexes = config[field].flatMap((reference, index) => (deleted(reference) ? [index] : []));
+      if (removedIndexes.length === 0) continue;
+      const removedModels = removedIndexes.map((index) => config[field][index]);
+      config[field] = config[field].filter((_, index) => !removedIndexes.includes(index));
+      for (const settingsField of ["coworkModelSettings", "copilotModelSettings"]) {
+        if (!Array.isArray(config[settingsField])) continue;
+        config[settingsField] = config[settingsField].filter((_, index) => !removedIndexes.includes(index));
+      }
       for (const mapField of ["coworkThinking", "copilotThinking", "copilotTokens"]) {
         if (!config[mapField] || typeof config[mapField] !== "object") continue;
         const nextMap = { ...config[mapField] };

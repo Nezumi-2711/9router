@@ -54,7 +54,10 @@ describe("CLI tool configuration contract", () => {
       apiKeyMode: "managed",
       selectedModels: ["cc/a", "cc/a"],
       coworkThinking: { "cc/a": "high", "stale/model": "low" },
-    })).toMatchObject({ selectedModels: ["cc/a", "cc/a"], coworkThinking: { "cc/a": "high" } });
+    })).toMatchObject({
+      selectedModels: ["cc/a", "cc/a"],
+      coworkModelSettings: [{ thinking: "high" }, { thinking: "high" }],
+    });
 
     expect(normalizeCliToolConfig("cursor", {
       apiKeyMode: "managed",
@@ -73,9 +76,34 @@ describe("CLI tool configuration contract", () => {
     })).toEqual({
       baseUrl: "https://router.example/v1",
       selectedModels: ["cc/a", "cc/a"],
-      copilotThinking: { "cc/a": "high" },
-      copilotTokens: { "cc/a": { maxInputTokens: 100000, maxOutputTokens: 32000 } },
+      copilotModelSettings: [
+        { thinking: "high", tokens: { maxInputTokens: 100000, maxOutputTokens: 32000 } },
+        { thinking: "high", tokens: { maxInputTokens: 100000, maxOutputTokens: 32000 } },
+      ],
     });
+  });
+
+  it("keeps duplicate model settings independent by occurrence", () => {
+    expect(normalizeCliToolConfig("copilot", {
+      baseUrl: "https://router.example/v1",
+      selectedModels: ["cc/a", "cc/a"],
+      copilotModelSettings: [
+        { thinking: "low", tokens: { maxInputTokens: 16000 } },
+        { thinking: "high", tokens: { maxOutputTokens: 32000 } },
+      ],
+    })).toMatchObject({
+      copilotModelSettings: [
+        { thinking: "low", tokens: { maxInputTokens: 16000 } },
+        { thinking: "high", tokens: { maxOutputTokens: 32000 } },
+      ],
+    });
+
+    expect(normalizeCliToolConfig("cowork", {
+      baseUrl: "https://router.example",
+      apiKeyMode: "managed",
+      selectedModels: ["cc/a", "cc/a"],
+      coworkModelSettings: [{ thinking: "low" }, { thinking: "high" }],
+    })).toMatchObject({ coworkModelSettings: [{ thinking: "low" }, { thinking: "high" }] });
   });
 
   it("rejects plaintext secrets, invalid URLs, and invalid token limits", () => {
