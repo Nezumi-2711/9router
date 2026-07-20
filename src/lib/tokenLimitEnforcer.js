@@ -1,17 +1,20 @@
 import {
   USER_TOKEN_LIMIT_PROVIDER_IDS,
-  USER_TOKEN_LIMIT_SESSION_MS,
   USER_TOKEN_LIMIT_WINDOWS,
 } from "open-sse/config/userTokenLimits.js";
 import {
+  ensureUserTokenQuotaSession,
   getUserById,
+  getUserProviderEarliestTokenUsageSince,
   getUserProviderTokenUsageSince,
+  getUserTokenQuotaSession,
   getUserTokenLimits,
 } from "@/lib/db/index.js";
 import {
-  getVietnamDateKey,
-  shiftVietnamDateKey,
-} from "@/shared/utils/dateTime.js";
+  getActiveSessionWindowStart,
+  getRollingSessionWindowStart,
+  getWeeklyTokenLimitWindowStart,
+} from "@/lib/userTokenLimitWindows.js";
 
 const limitedProviderSet = new Set(USER_TOKEN_LIMIT_PROVIDER_IDS);
 
@@ -20,18 +23,37 @@ export function getUserTokenLimitWindowStart(windowType, now = new Date()) {
   if (!Number.isFinite(current.getTime())) throw new Error("A valid current time is required");
 
   if (windowType === USER_TOKEN_LIMIT_WINDOWS.SESSION) {
-    return new Date(current.getTime() - USER_TOKEN_LIMIT_SESSION_MS);
+    return getRollingSessionWindowStart(current);
   }
 
   if (windowType === USER_TOKEN_LIMIT_WINDOWS.WEEKLY) {
-    const dateKey = getVietnamDateKey(current);
-    const vietnamNoon = new Date(`${dateKey}T12:00:00+07:00`);
-    const daysSinceMonday = (vietnamNoon.getUTCDay() + 6) % 7;
-    const mondayKey = shiftVietnamDateKey(dateKey, -daysSinceMonday);
-    return new Date(`${mondayKey}T00:00:00+07:00`);
+    return getWeeklyTokenLimitWindowStart(current);
   }
 
   throw new Error("Unsupported token limit window");
+}
+
+async function getActiveSessionStart(userId, provider, now) {
+  const storedSessionStart = await getUserTokenQuotaSession(userId, provider);
+  if (storedSessionStart) {
+    return getActiveSessionWindowStart(storedSessionStart, now);
+  }
+
+  // Keep active usage for installations created before fixed sessions existed.
+  const earliestUsageAt = await getUserProviderEarliestTokenUsageSince(
+    userId,
+    provider,
+    getRollingSessionWindowStart(now),
+  );
+  const legacySessionStart = getActiveSessionWindowStart(earliestUsageAt, now);
+  if (!legacySessionStart) return null;
+
+  const savedSessionStart = await ensureUserTokenQuotaSession(
+    userId,
+    provider,
+    legacySessionStart,
+  );
+  return getActiveSessionWindowStart(savedSessionStart, now);
 }
 
 /**
@@ -55,8 +77,12 @@ export async function checkUserTokenLimit(userId, provider, now = new Date()) {
     const limit = providerLimits[windowType];
     if (!Number.isSafeInteger(limit) || limit <= 0) continue;
 
-    const windowStart = getUserTokenLimitWindowStart(windowType, now);
-    const used = await getUserProviderTokenUsageSince(user.id, provider, windowStart);
+    const windowStart = windowType === USER_TOKEN_LIMIT_WINDOWS.SESSION
+      ? await getActiveSessionStart(user.id, provider, now)
+      : getWeeklyTokenLimitWindowStart(now);
+    const used = windowStart
+      ? await getUserProviderTokenUsageSince(user.id, provider, windowStart)
+      : 0;
     if (used >= limit) {
       return {
         exceeded: true,

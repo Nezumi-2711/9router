@@ -1,5 +1,8 @@
 # v0.5.35 (2026-07-16)
 
+## Fixes
+- **User quota**: reset fixed 5-hour session budgets at their scheduled boundary and keep weekly budget resets aligned to Monday 00:00 Vietnam time
+
 ## Features
 - **User limits**: add per-user total-token budgets for Orbit Provider and Codex with rolling 5-hour and weekly windows
 - **User quota**: show remaining Orbit and Codex headroom in the users table with session and weekly usage details

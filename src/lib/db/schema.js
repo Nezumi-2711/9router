@@ -148,6 +148,18 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_user_token_limits_user ON userTokenLimits(userId)",
     ],
   },
+  userTokenQuotaSessions: {
+    columns: {
+      userId: "TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE",
+      provider: "TEXT NOT NULL",
+      sessionStartedAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (userId, provider)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_user_token_quota_sessions_user ON userTokenQuotaSessions(userId)",
+    ],
+  },
   kv: {
     columns: {
       scope: "TEXT NOT NULL",

@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import {
   USER_TOKEN_LIMIT_PROVIDER_IDS,
+  USER_TOKEN_LIMIT_SESSION_MS,
   USER_TOKEN_LIMIT_WINDOW_IDS,
 } from "open-sse/config/userTokenLimits.js";
 
@@ -136,4 +137,68 @@ export async function getUserProviderEarliestTokenUsageSince(userId, provider, s
     [userId, provider, since.toISOString()],
   );
   return row?.timestamp || null;
+}
+
+export async function getUserTokenQuotaSession(userId, provider) {
+  if (!userId) return null;
+  assertProvider(provider);
+
+  const db = await getAdapter();
+  const row = db.get(
+    `SELECT sessionStartedAt
+     FROM userTokenQuotaSessions
+     WHERE userId = ? AND provider = ?`,
+    [userId, provider],
+  );
+  return row?.sessionStartedAt || null;
+}
+
+/**
+ * Start a fixed five-hour session only when no active one exists. Once its
+ * reset time passes, the next billable request starts the following session.
+ */
+export async function ensureUserTokenQuotaSession(userId, provider, sessionStartedAt) {
+  if (!userId) return null;
+  assertProvider(provider);
+
+  const nextStart = new Date(sessionStartedAt);
+  if (!Number.isFinite(nextStart.getTime())) {
+    throw new Error("A valid session start time is required");
+  }
+
+  const db = await getAdapter();
+  const nextStartIso = nextStart.toISOString();
+  let activeSessionStart = null;
+
+  db.transaction(() => {
+    const row = db.get(
+      `SELECT sessionStartedAt
+       FROM userTokenQuotaSessions
+       WHERE userId = ? AND provider = ?`,
+      [userId, provider],
+    );
+    const currentStart = row?.sessionStartedAt ? new Date(row.sessionStartedAt) : null;
+    const currentIsActive = Number.isFinite(currentStart?.getTime())
+      && (
+        currentStart.getTime() >= nextStart.getTime()
+        || currentStart.getTime() + USER_TOKEN_LIMIT_SESSION_MS > nextStart.getTime()
+      );
+
+    if (currentIsActive) {
+      activeSessionStart = currentStart.toISOString();
+      return;
+    }
+
+    db.run(
+      `INSERT INTO userTokenQuotaSessions(userId, provider, sessionStartedAt, updatedAt)
+       VALUES(?, ?, ?, ?)
+       ON CONFLICT(userId, provider) DO UPDATE SET
+         sessionStartedAt = excluded.sessionStartedAt,
+         updatedAt = excluded.updatedAt`,
+      [userId, provider, nextStartIso, new Date().toISOString()],
+    );
+    activeSessionStart = nextStartIso;
+  });
+
+  return activeSessionStart;
 }

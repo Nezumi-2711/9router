@@ -19,7 +19,7 @@ export const USER_TOKEN_LIMIT_WINDOW_IDS = Object.freeze(
 export const USER_TOKEN_LIMIT_WINDOW_CONFIG = Object.freeze({
   [USER_TOKEN_LIMIT_WINDOWS.SESSION]: Object.freeze({
     name: "Session",
-    description: "Rolling 5 hours",
+    description: "Fixed 5 hours from the first request",
   }),
   [USER_TOKEN_LIMIT_WINDOWS.WEEKLY]: Object.freeze({
     name: "Weekly",

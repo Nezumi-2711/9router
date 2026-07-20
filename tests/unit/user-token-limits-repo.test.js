@@ -67,6 +67,31 @@ describe("user token limit repository", () => {
     )).resolves.toBe(50);
   });
 
+  it("keeps a fixed session anchor until its five-hour boundary passes", async () => {
+    const db = await import("@/lib/db/index.js");
+    const user = await db.createUser({ username: "session-user", password: "password", role: "user" });
+
+    await expect(db.ensureUserTokenQuotaSession(
+      user.id,
+      "codex",
+      "2026-07-17T06:00:00.000Z",
+    )).resolves.toBe("2026-07-17T06:00:00.000Z");
+
+    await expect(db.ensureUserTokenQuotaSession(
+      user.id,
+      "codex",
+      "2026-07-17T08:00:00.000Z",
+    )).resolves.toBe("2026-07-17T06:00:00.000Z");
+
+    await expect(db.ensureUserTokenQuotaSession(
+      user.id,
+      "codex",
+      "2026-07-17T11:01:00.000Z",
+    )).resolves.toBe("2026-07-17T11:01:00.000Z");
+    await expect(db.getUserTokenQuotaSession(user.id, "codex"))
+      .resolves.toBe("2026-07-17T11:01:00.000Z");
+  });
+
   it("rejects negative and non-integer limits without changing stored values", async () => {
     const db = await import("@/lib/db/index.js");
     const user = await db.createUser({ username: "invalid-limit", password: "password", role: "user" });

@@ -358,7 +358,7 @@ export default function UsersPage() {
               <span className="material-symbols-outlined mt-0.5 text-[20px] text-brand-500">hourglass_top</span>
               <div>
                 <p className="text-sm font-medium text-text-main">Total token budgets</p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">Usage includes input and output tokens. Session usage is measured over the previous 5 hours; weekly usage resets Monday at 00:00 Vietnam time. Enter 0 for unlimited.</p>
+                <p className="mt-1 text-xs leading-5 text-text-muted">Usage includes input and output tokens. A session lasts 5 hours from its first request; weekly usage resets Monday at 00:00 Vietnam time. Enter 0 for unlimited.</p>
               </div>
             </div>
           </div>

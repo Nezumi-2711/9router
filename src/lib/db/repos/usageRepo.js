@@ -3,6 +3,8 @@ import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
 import { appendUsageAccessClause, getUsageAccessScope } from "./usageAccessScope.js";
+import { ensureUserTokenQuotaSession } from "./userTokenLimitsRepo.js";
+import { USER_TOKEN_LIMIT_PROVIDER_IDS } from "open-sse/config/userTokenLimits.js";
 import {
   formatVietnamDateTime,
   getVietnamDateKey,
@@ -20,6 +22,7 @@ const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
 const PERIOD_MS = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "60d": 5184000000 };
+const userTokenQuotaProviderSet = new Set(USER_TOKEN_LIMIT_PROVIDER_IDS);
 
 // In-memory state shared across Next.js modules
 if (!global._pendingRequests) global._pendingRequests = { byModel: {}, byAccount: {} };
@@ -316,6 +319,7 @@ export async function saveRequestUsage(entry) {
           stringifyJson(tokens), stringifyJson({}),
         ]
       );
+      inserted = true;
 
       const dateKey = getLocalDateKey(entry.timestamp);
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
@@ -323,6 +327,7 @@ export async function saveRequestUsage(entry) {
         requests: 0, promptTokens: 0, completionTokens: 0, cost: 0,
         byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byUser: {}, byEndpoint: {},
       };
+
       aggregateEntryToDay(day, entry);
       db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
 
@@ -332,6 +337,10 @@ export async function saveRequestUsage(entry) {
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
       inserted = true;
     });
+
+    if (inserted && entry.userId && userTokenQuotaProviderSet.has(entry.provider) && (promptTokens + completionTokens) > 0) {
+      await ensureUserTokenQuotaSession(entry.userId, entry.provider, entry.timestamp);
+    }
 
     if (inserted) {
       pushToRing(entry);

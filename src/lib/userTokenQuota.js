@@ -1,13 +1,18 @@
 import {
+  ensureUserTokenQuotaSession,
   getUserProviderEarliestTokenUsageSince,
   getUserProviderTokenUsageSince,
+  getUserTokenQuotaSession,
   getUserTokenLimits,
 } from "@/lib/db/index.js";
-import { getUserTokenLimitWindowStart } from "@/lib/tokenLimitEnforcer.js";
+import {
+  getActiveSessionWindowStart,
+  getRollingSessionWindowStart,
+  getSessionResetAt,
+  getWeeklyTokenLimitWindowStart,
+} from "@/lib/userTokenLimitWindows.js";
 import {
   USER_TOKEN_LIMIT_PROVIDER_IDS,
-  USER_TOKEN_LIMIT_WINDOW_IDS,
-  USER_TOKEN_LIMIT_SESSION_MS,
   USER_TOKEN_LIMIT_WEEKLY_MS,
   USER_TOKEN_LIMIT_WINDOWS,
 } from "open-sse/config/userTokenLimits.js";
@@ -37,17 +42,31 @@ export function buildUserTokenQuotaWindow(limit, used, windowStart) {
   };
 }
 
-function getSessionNextTokenRestoreAt(earliestTokenUsageAt, now) {
-  if (!earliestTokenUsageAt) return null;
-
-  const expiryTime = new Date(earliestTokenUsageAt).getTime() + USER_TOKEN_LIMIT_SESSION_MS;
-  return Number.isFinite(expiryTime) && expiryTime > now.getTime()
-    ? new Date(expiryTime).toISOString()
-    : null;
-}
-
 function getWeeklyResetAt(windowStart) {
   return new Date(windowStart.getTime() + USER_TOKEN_LIMIT_WEEKLY_MS).toISOString();
+}
+
+async function getActiveSessionStart(userId, provider, now) {
+  const storedSessionStart = await getUserTokenQuotaSession(userId, provider);
+  if (storedSessionStart) {
+    return getActiveSessionWindowStart(storedSessionStart, now);
+  }
+
+  // Seed a fixed-session record for usage logged before the session table.
+  const earliestUsageAt = await getUserProviderEarliestTokenUsageSince(
+    userId,
+    provider,
+    getRollingSessionWindowStart(now),
+  );
+  const legacySessionStart = getActiveSessionWindowStart(earliestUsageAt, now);
+  if (!legacySessionStart) return null;
+
+  const savedSessionStart = await ensureUserTokenQuotaSession(
+    userId,
+    provider,
+    legacySessionStart,
+  );
+  return getActiveSessionWindowStart(savedSessionStart, now);
 }
 
 /**
@@ -59,53 +78,39 @@ export async function getUserTokenQuota(userId, now = new Date()) {
     throw new Error("User id is required");
   }
 
-  const windows = Object.fromEntries(USER_TOKEN_LIMIT_WINDOW_IDS.map((windowType) => [
-    windowType,
-    getUserTokenLimitWindowStart(windowType, now),
-  ]));
   const limits = await getUserTokenLimits(userId);
+  const weeklyWindowStart = getWeeklyTokenLimitWindowStart(now);
+  const weeklyResetAt = getWeeklyResetAt(weeklyWindowStart);
 
-  const usageEntries = await Promise.all(
-    USER_TOKEN_LIMIT_PROVIDER_IDS.flatMap((provider) => (
-      USER_TOKEN_LIMIT_WINDOW_IDS.map(async (windowType) => [
-        provider,
-        windowType,
-        await getUserProviderTokenUsageSince(userId, provider, windows[windowType]),
-      ])
-    )),
-  );
+  const providerEntries = await Promise.all(USER_TOKEN_LIMIT_PROVIDER_IDS.map(async (provider) => {
+    const sessionWindowStart = await getActiveSessionStart(userId, provider, now);
+    const [sessionUsed, weeklyUsed] = await Promise.all([
+      sessionWindowStart
+        ? getUserProviderTokenUsageSince(userId, provider, sessionWindowStart)
+        : 0,
+      getUserProviderTokenUsageSince(userId, provider, weeklyWindowStart),
+    ]);
 
-  const sessionTokenUsageEntries = await Promise.all(
-    USER_TOKEN_LIMIT_PROVIDER_IDS.map(async (provider) => [
-      provider,
-      await getUserProviderEarliestTokenUsageSince(
-        userId,
-        provider,
-        windows[USER_TOKEN_LIMIT_WINDOWS.SESSION],
-      ),
-    ]),
-  );
-  const sessionNextTokenRestoreAt = Object.fromEntries(
-    sessionTokenUsageEntries.map(([provider, timestamp]) => [
-      provider,
-      getSessionNextTokenRestoreAt(timestamp, now),
-    ]),
-  );
-  const weeklyResetAt = getWeeklyResetAt(windows[USER_TOKEN_LIMIT_WINDOWS.WEEKLY]);
-
-  const providers = Object.fromEntries(
-    USER_TOKEN_LIMIT_PROVIDER_IDS.map((provider) => [provider, {}]),
-  );
-  for (const [provider, windowType, used] of usageEntries) {
-    providers[provider][windowType] = buildUserTokenQuotaWindow(
-      limits[provider]?.[windowType],
-      used,
-      windows[windowType],
+    const session = buildUserTokenQuotaWindow(
+      limits[provider]?.[USER_TOKEN_LIMIT_WINDOWS.SESSION],
+      sessionUsed,
+      sessionWindowStart || now,
     );
-    providers[provider][windowType].resetAt = windowType === USER_TOKEN_LIMIT_WINDOWS.SESSION
-      ? sessionNextTokenRestoreAt[provider]
-      : weeklyResetAt;
-  }
+    session.windowStart = sessionWindowStart?.toISOString() || null;
+    session.resetAt = getSessionResetAt(sessionWindowStart)?.toISOString() || null;
 
-  return providers;
+    const weekly = buildUserTokenQuotaWindow(
+      limits[provider]?.[USER_TOKEN_LIMIT_WINDOWS.WEEKLY],
+      weeklyUsed,
+      weeklyWindowStart,
+    );
+    weekly.resetAt = weeklyResetAt;
+
+    return [provider, {
+      [USER_TOKEN_LIMIT_WINDOWS.SESSION]: session,
+      [USER_TOKEN_LIMIT_WINDOWS.WEEKLY]: weekly,
+    }];
+  }));
+
+  return Object.fromEntries(providerEntries);
 }
