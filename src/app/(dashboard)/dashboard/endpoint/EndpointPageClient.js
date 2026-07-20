@@ -65,17 +65,23 @@ export default function APIPageClient({ isAdmin }) {
   const fetchQuickStats = useCallback(async () => {
     setQuickStatsLoading(true);
     try {
-      const [statsResponse, providersResponse] = await Promise.all([
-        fetch("/api/usage/stats?period=today"),
-        fetch("/api/providers/client?pageSize=500"),
-      ]);
+      const statsRequest = fetch("/api/usage/stats?period=today");
+      const providersRequest = isAdmin ? fetch("/api/providers/client?pageSize=500") : null;
+      const statsResponse = await statsRequest;
 
       if (!statsResponse.ok) throw new Error("Failed to fetch usage statistics");
 
       const statsData = await statsResponse.json();
       setQuickStats(statsData);
 
-      if (providersResponse.ok) {
+      if (!providersRequest) {
+        setProviderSummary(null);
+      } else {
+        const providersResponse = await providersRequest;
+        if (!providersResponse.ok) {
+          setProviderSummary(null);
+          return;
+        }
         const providersData = await providersResponse.json();
         const connections = providersData.connections || [];
         const activeConnections = connections.filter(
@@ -85,8 +91,6 @@ export default function APIPageClient({ isAdmin }) {
           active: activeConnections.length,
           total: providersData.pagination?.total ?? connections.length,
         });
-      } else {
-        setProviderSummary(null);
       }
     } catch {
       setQuickStats(null);
@@ -94,7 +98,7 @@ export default function APIPageClient({ isAdmin }) {
     } finally {
       setQuickStatsLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     const initialize = window.setTimeout(() => {
@@ -207,7 +211,7 @@ export default function APIPageClient({ isAdmin }) {
             <div className={`${styles.skeletonLine} h-3 w-4/5`} />
           </div>
         </div>
-        <QuickStatsBarSkeleton />
+        <QuickStatsBarSkeleton isAdmin={isAdmin} />
         <div className={`${styles.skeletonPanel} flex flex-col gap-4`}>
           <div className={`${styles.skeletonLine} h-5 w-40`} />
           <div className={`${styles.skeletonLine} h-14 w-full`} />
@@ -243,9 +247,9 @@ export default function APIPageClient({ isAdmin }) {
       <p className="sr-only" role="status" aria-live="polite">{copied ? "Value copied to clipboard." : ""}</p>
 
       {quickStatsLoading ? (
-        <QuickStatsBarSkeleton />
+        <QuickStatsBarSkeleton isAdmin={isAdmin} />
       ) : (
-        <QuickStatsBar stats={quickStats} providerSummary={providerSummary} />
+        <QuickStatsBar stats={quickStats} providerSummary={providerSummary} isAdmin={isAdmin} />
       )}
 
       {loadError && (

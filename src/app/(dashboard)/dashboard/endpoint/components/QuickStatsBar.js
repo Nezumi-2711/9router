@@ -47,11 +47,17 @@ const statDefinitions = [
   },
 ];
 
-export function QuickStatsBarSkeleton() {
+function getVisibleStatDefinitions(isAdmin) {
+  return isAdmin ? statDefinitions : statDefinitions.filter((stat) => stat.key !== "providers");
+}
+
+export function QuickStatsBarSkeleton({ isAdmin = false }) {
+  const visibleStatDefinitions = getVisibleStatDefinitions(isAdmin);
+
   return (
     <section className={`${styles.quickStats} animate-pulse`} aria-label="Loading today's gateway statistics" aria-busy="true">
       <span className="sr-only">Loading today&apos;s gateway statistics.</span>
-      {statDefinitions.map((stat) => (
+      {visibleStatDefinitions.map((stat) => (
         <div key={stat.key} className={styles.statSkeleton} aria-hidden="true">
           <div className={`${styles.skeletonLine} size-8`} />
           <div className="min-w-0 space-y-2">
@@ -65,13 +71,14 @@ export function QuickStatsBarSkeleton() {
   );
 }
 
-export default function QuickStatsBar({ stats, providerSummary = null }) {
+export default function QuickStatsBar({ stats, providerSummary = null, isAdmin = false }) {
   if (!stats) return null;
+  const visibleStatDefinitions = getVisibleStatDefinitions(isAdmin);
 
   return (
     <section className={styles.quickStats} aria-labelledby="today-overview-title">
       <h3 id="today-overview-title" className="sr-only">Today&apos;s gateway overview</h3>
-      {statDefinitions.map((stat) => (
+      {visibleStatDefinitions.map((stat) => (
         <article key={stat.key} className={styles.statCard}>
           <span className={`${styles.statIcon} material-symbols-outlined`} aria-hidden="true">{stat.icon}</span>
           <p className={styles.statLabel}>{stat.label}</p>
@@ -84,6 +91,7 @@ export default function QuickStatsBar({ stats, providerSummary = null }) {
 }
 
 QuickStatsBar.propTypes = {
+  isAdmin: PropTypes.bool,
   stats: PropTypes.shape({
     totalRequests: PropTypes.number,
     totalPromptTokens: PropTypes.number,
