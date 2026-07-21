@@ -128,6 +128,10 @@
   gap: 0.75rem;
 }
 
+.quickStatsUser {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .statCard,
 .statSkeleton {
   display: grid;

@@ -55,7 +55,7 @@ export function QuickStatsBarSkeleton({ isAdmin = false }) {
   const visibleStatDefinitions = getVisibleStatDefinitions(isAdmin);
 
   return (
-    <section className={`${styles.quickStats} animate-pulse`} aria-label="Loading today's gateway statistics" aria-busy="true">
+    <section className={`${styles.quickStats} ${!isAdmin ? styles.quickStatsUser : ""} animate-pulse`} aria-label="Loading today's gateway statistics" aria-busy="true">
       <span className="sr-only">Loading today&apos;s gateway statistics.</span>
       {visibleStatDefinitions.map((stat) => (
         <div key={stat.key} className={styles.statSkeleton} aria-hidden="true">
@@ -76,7 +76,7 @@ export default function QuickStatsBar({ stats, providerSummary = null, isAdmin =
   const visibleStatDefinitions = getVisibleStatDefinitions(isAdmin);
 
   return (
-    <section className={styles.quickStats} aria-labelledby="today-overview-title">
+    <section className={`${styles.quickStats} ${!isAdmin ? styles.quickStatsUser : ""}`} aria-labelledby="today-overview-title">
       <h3 id="today-overview-title" className="sr-only">Today&apos;s gateway overview</h3>
       {visibleStatDefinitions.map((stat) => (
         <article key={stat.key} className={styles.statCard}>
@@ -89,6 +89,10 @@ export default function QuickStatsBar({ stats, providerSummary = null, isAdmin =
     </section>
   );
 }
+
+QuickStatsBarSkeleton.propTypes = {
+  isAdmin: PropTypes.bool,
+};
 
 QuickStatsBar.propTypes = {
   isAdmin: PropTypes.bool,
