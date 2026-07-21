@@ -2,6 +2,7 @@
 
 ## DevOps
 - **Dokploy**: deploy production Compose from GitHub Actions with serialized rollout tracking, terminal-status handling, health verification, and deployment summaries
+- **GitHub Actions**: remove unrelated Docker image publishing and GitBook Pages deployment workflows
 
 # v0.5.35 (2026-07-16)
 
