@@ -81,7 +81,7 @@ export {
 
 // Permanently deleted models
 export {
-  getDeletedModels, isDeletedModel, isDeletedModelReference, deleteModelPermanently,
+  getDeletedModels, isDeletedModel, isDeletedModelReference, restoreDeletedModel, deleteModelPermanently,
 } from "./repos/deletedModelsRepo.js";
 
 // Usage

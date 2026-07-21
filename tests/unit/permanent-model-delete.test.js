@@ -218,5 +218,10 @@ describe("permanent model deletion", () => {
 
     const backup = await db.exportDb();
     expect(backup.deletedModels).toMatchObject({ [providerId]: [modelId] });
+
+    expect(await db.restoreDeletedModel(providerPrefix, `${modelId}(high)`)).toBe(true);
+    expect(await db.isDeletedModel(providerId, modelId)).toBe(false);
+    expect(await db.isDeletedModel(providerPrefix, `${modelId}(high)`)).toBe(false);
+    expect((await db.getDeletedModels())[providerId]).toBeUndefined();
   });
 });

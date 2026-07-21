@@ -302,6 +302,39 @@ export async function isDeletedModelReference(reference) {
   });
 }
 
+/**
+ * Remove permanent-deletion tombstones for a model that an administrator adds
+ * back to the shared catalog. This deliberately does not restore dependencies
+ * that were removed when the model was deleted (combos, aliases, pricing, and
+ * request details); it only makes the newly added model routable again.
+ */
+export async function restoreDeletedModel(providerAlias, modelId) {
+  if (!providerAlias || !modelId) return false;
+
+  const db = await getAdapter();
+  let restored = false;
+
+  db.transaction(() => {
+    const providerAliases = getProviderAliasesSync(db, providerAlias);
+
+    for (const alias of providerAliases) {
+      const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [SCOPE, alias]);
+      const current = normalizeIds(row ? parseJson(row.value, []) : []);
+      const next = current.filter((deletedModelId) => !matchesDeletedModelId(modelId, deletedModelId));
+      if (next.length === current.length) continue;
+
+      restored = true;
+      if (next.length === 0) {
+        db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [SCOPE, alias]);
+      } else {
+        db.run(`UPDATE kv SET value = ? WHERE scope = ? AND key = ?`, [stringifyJson(next), SCOPE, alias]);
+      }
+    }
+  });
+
+  return restored;
+}
+
 export async function deleteModelPermanently(providerAlias, modelId) {
   if (!providerAlias || !modelId) return null;
 
