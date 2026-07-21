@@ -1,0 +1,167 @@
+name: Deploy to Dokploy
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: dokploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: production
+      url: ${{ vars.NINEROUTER_PUBLIC_URL }}
+    env:
+      DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
+      DOKPLOY_COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
+      DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+      DOKPLOY_SNAPSHOT_FILE: ${{ runner.temp }}/dokploy-deployments-before.json
+
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate deployment configuration
+        env:
+          PUBLIC_URL: ${{ vars.NINEROUTER_PUBLIC_URL }}
+        run: |
+          node <<'NODE'
+          const required = [
+            "DOKPLOY_URL",
+            "DOKPLOY_COMPOSE_ID",
+            "DOKPLOY_API_TOKEN",
+            "PUBLIC_URL",
+          ];
+
+          for (const name of required) {
+            if (!process.env[name]?.trim()) {
+              throw new Error(`${name} is required`);
+            }
+          }
+
+          for (const name of ["DOKPLOY_URL", "PUBLIC_URL"]) {
+            const url = new URL(process.env[name]);
+            if (url.protocol !== "https:") {
+              throw new Error(`${name} must use HTTPS`);
+            }
+          }
+          NODE
+
+      - name: Capture deployment baseline
+        run: node .github/scripts/dokploy-deployment-tracker.mjs snapshot
+
+      - name: Trigger Dokploy Compose deployment
+        id: trigger
+        uses: benbristow/dokploy-deploy-action@0.2.2
+        with:
+          dokploy_url: ${{ vars.DOKPLOY_URL }}
+          api_token: ${{ secrets.DOKPLOY_API_TOKEN }}
+          application_id: ${{ vars.DOKPLOY_COMPOSE_ID }}
+          service_type: compose
+
+      - name: Wait for Dokploy deployment
+        id: deployment
+        run: node .github/scripts/dokploy-deployment-tracker.mjs wait
+
+      - name: Verify production health
+        id: health
+        env:
+          PUBLIC_URL: ${{ vars.NINEROUTER_PUBLIC_URL }}
+        run: |
+          node <<'NODE'
+          const publicUrl = process.env.PUBLIC_URL?.trim();
+          if (!publicUrl) {
+            throw new Error("NINEROUTER_PUBLIC_URL is required");
+          }
+
+          const healthUrl = new URL("/api/health", publicUrl).toString();
+          const attempts = 18;
+          const intervalMs = 10_000;
+
+          for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10_000);
+
+            try {
+              const response = await fetch(healthUrl, {
+                headers: { accept: "application/json" },
+                signal: controller.signal,
+              });
+              const body = response.ok ? await response.json() : null;
+              if (response.ok && body?.ok === true) {
+                console.info(`Production health check passed: ${healthUrl}`);
+                process.exit(0);
+              }
+              console.warn(`Health check ${attempt}/${attempts} returned HTTP ${response.status}`);
+            } catch (error) {
+              console.warn(`Health check ${attempt}/${attempts} failed: ${error.message}`);
+            } finally {
+              clearTimeout(timeout);
+            }
+
+            if (attempt < attempts) {
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+            }
+          }
+
+          throw new Error(`Production health check failed after ${attempts} attempts: ${healthUrl}`);
+          NODE
+
+      - name: Publish deployment summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          DEPLOYMENT_STATUS: ${{ steps.deployment.outputs.status }}
+          DEPLOYMENT_TITLE: ${{ steps.deployment.outputs.title }}
+          DEPLOYMENT_CREATED_AT: ${{ steps.deployment.outputs.created_at }}
+          DEPLOYMENT_STARTED_AT: ${{ steps.deployment.outputs.started_at }}
+          DEPLOYMENT_FINISHED_AT: ${{ steps.deployment.outputs.finished_at }}
+          DEPLOYMENT_ERROR: ${{ steps.deployment.outputs.error_message }}
+          PUBLIC_URL: ${{ vars.NINEROUTER_PUBLIC_URL }}
+        run: |
+          sanitize_summary_value() {
+            printf '%s' "$1" | tr '\r\n|' '   '
+          }
+
+          safe_title=$(sanitize_summary_value "$DEPLOYMENT_TITLE")
+          safe_error=$(sanitize_summary_value "$DEPLOYMENT_ERROR")
+
+          {
+            echo "## Dokploy production deployment"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            printf '| Workflow result | `%s` |\n' "${JOB_STATUS:-unknown}"
+            printf '| Git ref | `%s` |\n' "$GITHUB_REF_NAME"
+            printf '| Commit | `%s` |\n' "$GITHUB_SHA"
+            printf '| Compose ID | `%s` |\n' "$DOKPLOY_COMPOSE_ID"
+            printf '| Deployment ID | `%s` |\n' "${DEPLOYMENT_ID:-not discovered}"
+            printf '| Deployment status | `%s` |\n' "${DEPLOYMENT_STATUS:-unknown}"
+            printf '| Created | `%s` |\n' "${DEPLOYMENT_CREATED_AT:-unknown}"
+            printf '| Started | `%s` |\n' "${DEPLOYMENT_STARTED_AT:-unknown}"
+            printf '| Finished | `%s` |\n' "${DEPLOYMENT_FINISHED_AT:-unknown}"
+            printf '| Health endpoint | %s/api/health |\n' "${PUBLIC_URL%/}"
+
+            if [ -n "$safe_title" ]; then
+              printf '\n**Deployment:** %s\n' "$safe_title"
+            fi
+            if [ -n "$safe_error" ]; then
+              printf '\n**Dokploy error:** %s\n' "$safe_error"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,3 +1,8 @@
+# Unreleased
+
+## DevOps
+- **Dokploy**: deploy production Compose from GitHub Actions with serialized rollout tracking, terminal-status handling, health verification, and deployment summaries
+
 # v0.5.35 (2026-07-16)
 
 ## Fixes
