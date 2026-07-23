@@ -352,7 +352,7 @@ export default function ComboDetailPage() {
                       Download
                     </a>
                   </div>
-                  <img src={testResult.imageUrl} alt="Generated" className="max-w-full rounded-lg border border-border" />
+                  <img src={testResult.imageUrl} alt="Generated" className="max-w-full rounded-lg border border-border" loading="lazy" decoding="async" />
                 </div>
               )}
               {testResult.audioUrl && (
@@ -388,18 +388,20 @@ export default function ComboDetailPage() {
         )}
       </Card>
 
-      <ModelSelectModal
-        isOpen={showPicker}
-        onClose={() => setShowPicker(false)}
-        onSelect={handleAddModel}
-        onDeselect={handleDeselectModel}
-        activeProviders={connections}
-        modelAliases={modelAliases}
-        title={`Add ${kindLabel} Model`}
-        kindFilter={combo.kind}
-        addedModelValues={providers}
-        closeOnSelect={false}
-      />
+      {showPicker && (
+        <ModelSelectModal
+          isOpen={showPicker}
+          onClose={() => setShowPicker(false)}
+          onSelect={handleAddModel}
+          onDeselect={handleDeselectModel}
+          activeProviders={connections}
+          modelAliases={modelAliases}
+          title={`Add ${kindLabel} Model`}
+          kindFilter={combo.kind}
+          addedModelValues={providers}
+          closeOnSelect={false}
+        />
+      )}
     </div>
   );
 }

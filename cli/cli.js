@@ -3,6 +3,7 @@
 const { spawn, exec, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const https = require("https");
 const net = require("net");
 const os = require("os");
 
@@ -23,6 +24,42 @@ function waitServerReady(port, { timeoutMs = 15000, intervalMs = 150 } = {}) {
     };
     tryConnect();
   });
+}
+
+// Native spinner - no external dependency
+function createSpinner(text) {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let i = 0;
+  let interval = null;
+  let currentText = text;
+  return {
+    start() {
+      if (process.stdout.isTTY) {
+        process.stdout.write(`\r${frames[0]} ${currentText}`);
+        interval = setInterval(() => {
+          process.stdout.write(`\r${frames[i++ % frames.length]} ${currentText}`);
+        }, 80);
+      }
+      return this;
+    },
+    stop() {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      if (process.stdout.isTTY) {
+        process.stdout.write("\r\x1b[K");
+      }
+    },
+    succeed(msg) {
+      this.stop();
+      console.log(`✅ ${msg}`);
+    },
+    fail(msg) {
+      this.stop();
+      console.log(`❌ ${msg}`);
+    }
+  };
 }
 
 const pkg = require("./package.json");
@@ -53,6 +90,7 @@ try { ensureTrayRuntime({ silent: true }); } catch {}
 
 // Configuration constants
 const APP_NAME = pkg.name; // Use from package.json
+const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
@@ -81,6 +119,7 @@ const PROCESS_IDENTIFIERS = [
 let port = DEFAULT_PORT;
 let host = DEFAULT_HOST;
 let noBrowser = false;
+let skipUpdate = false;
 let showLog = false;
 let trayMode = false;
 
@@ -95,6 +134,8 @@ for (let i = 0; i < args.length; i++) {
     noBrowser = true;
   } else if (args[i] === "--log" || args[i] === "-l") {
     showLog = true;
+  } else if (args[i] === "--skip-update") {
+    skipUpdate = true;
   } else if (args[i] === "--tray" || args[i] === "-t") {
     trayMode = true;
     process.env.TRAY_MODE = "1";
@@ -108,6 +149,7 @@ Options:
   -n, --no-browser    Don't open browser automatically
   -l, --log           Show server logs (default: hidden)
   -t, --tray          Run in system tray mode (background)
+  --skip-update       Skip auto-update check
   -h, --help          Show this help message
   -v, --version       Show version
 
@@ -123,8 +165,25 @@ Commands:
   }
 }
 
+// Auto-relaunch after update: detached process has no TTY → fallback to tray
+if (skipUpdate && !trayMode && !process.stdin.isTTY) {
+  trayMode = true;
+  process.env.TRAY_MODE = "1";
+}
+
 // Always use Node.js runtime with absolute path
 const RUNTIME = process.execPath;
+
+// Compare semver versions: returns 1 if a > b, -1 if a < b, 0 if equal
+function compareVersions(a, b) {
+  const partsA = a.split(".").map(Number);
+  const partsB = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (partsA[i] > partsB[i]) return 1;
+    if (partsA[i] < partsB[i]) return -1;
+  }
+  return 0;
+}
 
 // Get app data dir (matches app/src/lib/dataDir.js convention)
 function getAppDataDir() {
@@ -150,14 +209,54 @@ function killByPidFile(pidFile) {
   } catch { }
 }
 
+// Kill tunnel processes (cloudflared/tailscale) by their PID files
+function killTunnelByPidFile() {
+  const tunnelDir = path.join(getAppDataDir(), "tunnel");
+  killByPidFile(path.join(tunnelDir, "cloudflared.pid"));
+  killByPidFile(path.join(tunnelDir, "tailscale.pid"));
+}
+
+// Kill cloudflared whose --url targets this app's port (covers stale PID file case)
+function killCloudflaredByAppPort(appPort) {
+  if (!appPort) return [];
+  const portMatchers = [`localhost:${appPort}`, `127.0.0.1:${appPort}`];
+  const pids = [];
+  try {
+    if (process.platform === "win32") {
+      const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"cloudflared.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
+      const output = execSync(psCmd, { encoding: "utf8", windowsHide: true, timeout: 5000 });
+      const lines = output.split("\n").slice(1).filter(l => l.trim());
+      lines.forEach(line => {
+        if (portMatchers.some(m => line.includes(m))) {
+          const match = line.match(/^"(\d+)"/);
+          if (match && match[1]) pids.push(match[1]);
+        }
+      });
+    } else {
+      const output = execSync("ps -eo pid,command 2>/dev/null", { encoding: "utf8", timeout: 5000 });
+      output.split("\n").forEach(line => {
+        if (line.includes("cloudflared") && portMatchers.some(m => line.includes(m))) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[0];
+          if (pid && !isNaN(pid)) pids.push(pid);
+        }
+      });
+    }
+  } catch { }
+  return pids;
+}
+
 // Kill all 9router processes
 function killAllAppProcesses(appPort) {
   return new Promise((resolve) => {
     try {
-      // MITM runs on a separate process and does not block the critical path.
+      // Background: MITM + tunnel/cloudflared run on separate ports/processes —
+      // killing them doesn't free the app port, so don't block the critical path.
       // Server-side MITM manager has stale-lock recovery and starts deferred (~3s).
       setImmediate(() => {
         try { killProxyByPidFile(); } catch {}
+        try { killTunnelByPidFile(); } catch {}
+        try { killCloudflaredByAppPort(appPort); } catch {}
       });
 
       const platform = process.platform;
@@ -356,6 +455,55 @@ function isRestrictedEnvironment() {
   return null;
 }
 
+// Check if new version available, return latest version or null
+function checkForUpdate() {
+  return new Promise((resolve) => {
+    if (skipUpdate) {
+      resolve(null);
+      return;
+    }
+
+    const spinner = createSpinner("Checking for updates...").start();
+    let resolved = false;
+
+    const safetyTimeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        spinner.stop();
+        resolve(null);
+      }
+    }, 8000);
+
+    const done = (version) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(safetyTimeout);
+      spinner.stop();
+      resolve(version);
+    };
+
+    const req = https.get(`https://registry.npmjs.org/${pkg.name}/latest`, { timeout: 3000 }, (res) => {
+      let data = "";
+      res.on("data", chunk => data += chunk);
+      res.on("end", () => {
+        try {
+          const latest = JSON.parse(data);
+          if (latest.version && compareVersions(latest.version, pkg.version) > 0) {
+            done(latest.version);
+          } else {
+            done(null);
+          }
+        } catch (e) {
+          done(null);
+        }
+      });
+    });
+
+    req.on("error", () => done(null));
+    req.on("timeout", () => { req.destroy(); done(null); });
+  });
+}
+
 // Open browser
 function openBrowser(url) {
   const platform = process.platform;
@@ -390,23 +538,38 @@ if (!fs.existsSync(serverPath)) {
   process.exit(1);
 }
 
+// Start server immediately; run update check in parallel (not on the critical path).
+const updatePromise = checkForUpdate();
 killAllAppProcesses(port)
   .then(() => killProcessOnPort(port))
-  .then(() => startServer());
+  .then(() => startServer(updatePromise));
 
 // Show interface selection menu
-async function showInterfaceMenu() {
+async function showInterfaceMenu(latestVersion) {
   const { selectMenu } = require("./src/cli/utils/input");
   const { clearScreen } = require("./src/cli/utils/display");
+  const { getEndpoint } = require("./src/cli/utils/endpoint");
+
   clearScreen();
 
   const displayHost = getDisplayHost();
 
-  const serverUrl = `http://${displayHost}:${port}`;
+  // Detect tunnel/local mode for server URL display
+  let serverUrl;
+  try {
+    const { endpoint, tunnelEnabled } = await getEndpoint(port);
+    serverUrl = tunnelEnabled ? endpoint.replace(/\/v1$/, "") : `http://${displayHost}:${port}`;
+  } catch (e) {
+    serverUrl = `http://${displayHost}:${port}`;
+  }
 
   const subtitle = `🚀 Server: \x1b[32m${serverUrl}\x1b[0m`;
 
   const menuItems = [];
+
+  if (latestVersion) {
+    menuItems.push({ label: `Update to v${latestVersion} (current: v${pkg.version})`, icon: "⬆" });
+  }
 
   menuItems.push(
     { label: "Web UI (Open in Browser)", icon: "🌐" },
@@ -417,16 +580,21 @@ async function showInterfaceMenu() {
 
   const selected = await selectMenu(`Choose Interface (v${pkg.version})`, menuItems, 0, subtitle);
 
-  if (selected === 0) return "web";
-  if (selected === 1) return "terminal";
-  if (selected === 2) return "hide";
+  const offset = latestVersion ? 1 : 0;
+
+  if (latestVersion && selected === 0) return "update";
+  if (selected === offset) return "web";
+  if (selected === offset + 1) return "terminal";
+  if (selected === offset + 2) return "hide";
   return "exit";
 }
 
 const MAX_RESTARTS = 2;
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
-function startServer() {
+function startServer(updatePromise) {
+  // Accept either a Promise (parallel update check) or a resolved value.
+  const latestVersionPromise = Promise.resolve(updatePromise);
   const displayHost = getDisplayHost();
   const url = `http://${displayHost}:${port}/dashboard`;
   // Surface real network exposure when bound to all interfaces (default 0.0.0.0).
@@ -444,7 +612,7 @@ function startServer() {
   function spawnServer() {
     serverStartTime = Date.now();
     crashLog = [];
-    const child = spawn(RUNTIME, ["--max-old-space-size=6144", serverPath], {
+    const child = spawn(RUNTIME, ["--dns-result-order=ipv4first", "--max-old-space-size=6144", serverPath], {
       cwd: standaloneDir,
       stdio: showLog ? "inherit" : ["ignore", "ignore", "pipe"],
       detached: true,
@@ -480,6 +648,8 @@ function startServer() {
       } catch (e) { }
       // Kill MIT server (privileged process) via PID file
       killProxyByPidFile();
+      // Kill cloudflared/tailscale via PID file (only this app's tunnel)
+      killTunnelByPidFile();
       // Kill server process directly
       if (server.pid) {
         process.kill(server.pid, "SIGKILL");
@@ -556,14 +726,28 @@ function startServer() {
 
   // Wait for server to be ready, then show interface menu loop + tray
   waitServerReady(port).then(async () => {
+    // Resolve parallel update check (already running); don't block server start on it.
+    const latestVersion = await latestVersionPromise;
     // Start tray icon alongside TUI
     initTrayIcon();
 
     try {
       while (true) {
-        const choice = await showInterfaceMenu();
+        const choice = await showInterfaceMenu(latestVersion);
 
-        if (choice === "web") {
+        if (choice === "update") {
+          isShuttingDown = true;
+          const { clearScreen } = require("./src/cli/utils/display");
+          clearScreen();
+          console.log(`\n⬆  Update v${pkg.version} → v${latestVersion}\n`);
+          console.log(`Run this after exit:\n`);
+          console.log(`   \x1b[33m${INSTALL_CMD_LATEST}\x1b[0m\n`);
+          cleanup();
+          await killAllAppProcesses(port);
+          await killProcessOnPort(port);
+          setTimeout(() => process.exit(0), 200);
+          return;
+        } else if (choice === "web") {
           openBrowser(url);
           // Wait for user to come back
           const { pause } = require("./src/cli/utils/input");
@@ -601,7 +785,7 @@ function startServer() {
           // Windows/Linux: spawn detached bgProcess (systray works fine in child)
           console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
 
-          const bgProcess = spawn(process.execPath, [__filename, "--tray", "-p", port.toString()], {
+          const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "-p", port.toString()], {
             detached: true,
             stdio: "ignore",
             windowsHide: true,

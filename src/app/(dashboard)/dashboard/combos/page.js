@@ -24,7 +24,7 @@ export default function CombosPage() {
 
   useEffect(() => {
     fetchData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   async function fetchData() {
     try {
@@ -205,23 +205,27 @@ export default function CombosPage() {
       )}
 
       {/* Create Modal - Use key to force remount and reset state */}
-      <ComboFormModal
-        key="create"
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSave={handleCreate}
-        availableModels={selectableModels}
-      />
+      {showCreateModal && (
+        <ComboFormModal
+          key="create"
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleCreate}
+          availableModels={selectableModels}
+        />
+      )}
 
       {/* Edit Modal - Use key to force remount and reset state */}
-      <ComboFormModal
-        key={editingCombo?.id || "new"}
-        isOpen={!!editingCombo}
-        combo={editingCombo}
-        onClose={() => setEditingCombo(null)}
-        onSave={(data) => handleUpdate(editingCombo.id, data)}
-        availableModels={selectableModels}
-      />
+      {editingCombo && (
+        <ComboFormModal
+          key={editingCombo.id}
+          isOpen={true}
+          combo={editingCombo}
+          onClose={() => setEditingCombo(null)}
+          onSave={(data) => handleUpdate(editingCombo.id, data)}
+          availableModels={selectableModels}
+        />
+      )}
 
       {/* Confirm Delete Modal */}
       <ConfirmModal
@@ -346,15 +350,17 @@ function ComboCard({ combo, modelCaps = {}, availableModels = [], copied, onCopy
       </div>
 
       {/* Judge model picker (single-select; combo members make natural judges too) */}
-      <ModelSelectModal
-        isOpen={showJudgeSelect}
-        onClose={() => setShowJudgeSelect(false)}
-        onSelect={(m) => { onSetStrategy({ judgeModel: m?.value || "" }); setShowJudgeSelect(false); }}
-        availableModels={availableModels}
-        title="Select Judge Model"
-        addedModelValues={judge ? [judge] : []}
-        closeOnSelect={true}
-      />
+      {showJudgeSelect && (
+        <ModelSelectModal
+          isOpen={showJudgeSelect}
+          onClose={() => setShowJudgeSelect(false)}
+          onSelect={(m) => { onSetStrategy({ judgeModel: m?.value || "" }); setShowJudgeSelect(false); }}
+          availableModels={availableModels}
+          title="Select Judge Model"
+          addedModelValues={judge ? [judge] : []}
+          closeOnSelect={true}
+        />
+      )}
     </Card>
   );
 }
@@ -631,17 +637,19 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, availableModels = [], 
       </Modal>
 
       {/* Model Select Modal */}
-      <ModelSelectModal
-        isOpen={showModelSelect}
-        onClose={() => setShowModelSelect(false)}
-        onSelect={handleAddModel}
-        onDeselect={handleDeselectModel}
-        availableModels={availableModels}
-        title="Add Model to Combo"
-        kindFilter={kindFilter}
-        addedModelValues={models}
-        closeOnSelect={false}
-      />
+      {showModelSelect && (
+        <ModelSelectModal
+          isOpen={showModelSelect}
+          onClose={() => setShowModelSelect(false)}
+          onSelect={handleAddModel}
+          onDeselect={handleDeselectModel}
+          availableModels={availableModels}
+          title="Add Model to Combo"
+          kindFilter={kindFilter}
+          addedModelValues={models}
+          closeOnSelect={false}
+        />
+      )}
     </>
   );
 }
